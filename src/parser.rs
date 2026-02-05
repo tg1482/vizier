@@ -40,7 +40,8 @@ pub fn parse_event_to_node(event: SessionEvent) -> Result<Vec<Node>> {
                 let text = extract_text_content(&message.content);
 
                 // Create assistant message node if there's text
-                if !text.is_empty() {
+                let has_text_node = !text.is_empty();
+                if has_text_node {
                     nodes.push(Node {
                         id: event.uuid.clone(),
                         parent_id: event.parent_uuid.clone(),
@@ -53,10 +54,18 @@ pub fn parse_event_to_node(event: SessionEvent) -> Result<Vec<Node>> {
 
                 // Extract tool uses
                 if let Some(tool_uses) = extract_tool_uses(&message.content) {
+                    // If we created an Asst node, tools parent to it.
+                    // Otherwise, tools parent to the event's parent (previous node in chain).
+                    let tool_parent = if has_text_node {
+                        Some(event.uuid.clone())
+                    } else {
+                        event.parent_uuid.clone()
+                    };
+
                     for (_idx, (tool_id, tool_name, tool_input)) in tool_uses.iter().enumerate() {
                         nodes.push(Node {
                             id: tool_id.clone(),
-                            parent_id: Some(event.uuid.clone()),
+                            parent_id: tool_parent.clone(),
                             node_type: NodeType::ToolUse {
                                 name: tool_name.clone(),
                                 input: tool_input.clone(),
