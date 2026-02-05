@@ -54,17 +54,69 @@ impl AppState {
     pub fn level_down(&mut self) {
         let max_level = self.get_max_level();
         if self.current_level < max_level {
+            // Get current timestamp before switching levels
+            let current_timestamp = self.get_current_node_index()
+                .and_then(|idx| self.graph.nodes.get(idx))
+                .map(|n| n.timestamp);
+
             self.current_level += 1;
-            self.cursor_in_level = 0; // Reset position in new level
+
+            // Find nearest node in new level by timestamp
+            if let Some(ts) = current_timestamp {
+                self.cursor_in_level = self.find_nearest_in_level(ts);
+            } else {
+                self.cursor_in_level = 0;
+            }
         }
     }
 
     // Move to previous level up
     pub fn level_up(&mut self) {
         if self.current_level > 0 {
+            // Get current timestamp before switching levels
+            let current_timestamp = self.get_current_node_index()
+                .and_then(|idx| self.graph.nodes.get(idx))
+                .map(|n| n.timestamp);
+
             self.current_level -= 1;
-            self.cursor_in_level = 0;
+
+            // Find nearest node in new level by timestamp
+            if let Some(ts) = current_timestamp {
+                self.cursor_in_level = self.find_nearest_in_level(ts);
+            } else {
+                self.cursor_in_level = 0;
+            }
         }
+    }
+
+    // Find the nearest node in current level to a given timestamp
+    fn find_nearest_in_level(&self, target_timestamp: chrono::DateTime<chrono::Utc>) -> usize {
+        let level_nodes: Vec<(usize, chrono::DateTime<chrono::Utc>)> = self.graph.nodes.iter()
+            .enumerate()
+            .filter(|(_, n)| {
+                let visual_branch = get_visual_branch(n, self.zoom.level);
+                visual_branch == self.current_level
+            })
+            .map(|(idx, n)| (idx, n.timestamp))
+            .collect();
+
+        if level_nodes.is_empty() {
+            return 0;
+        }
+
+        // Find the node with closest timestamp
+        level_nodes.iter()
+            .enumerate()
+            .min_by_key(|(_, (_, ts))| {
+                let diff = if *ts > target_timestamp {
+                    (*ts - target_timestamp).num_seconds()
+                } else {
+                    (target_timestamp - *ts).num_seconds()
+                };
+                diff.abs()
+            })
+            .map(|(pos, _)| pos)
+            .unwrap_or(0)
     }
 
     // Move right within current level
