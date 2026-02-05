@@ -388,10 +388,32 @@ fn render_timeline(f: &mut Frame, area: Rect, state: &AppState) {
             .map(|(col, &idx)| (state.graph.nodes[idx].id.as_str(), col))
             .collect();
 
-        // Render each visual branch as a horizontal row, with connector rows between them
+        // Pre-compute connector columns for each gap between adjacent rows.
+        // Walk the timeline: when the visual branch changes between consecutive
+        // nodes, place a │ at the transition column through all intermediate gaps.
         let max_branch = max_visual_branch.min(6);
+        let num_cols = window_indices.len();
+        let mut connector_gaps: Vec<std::collections::HashSet<usize>> = vec![std::collections::HashSet::new(); max_branch];
+
+        let mut prev_branch: Option<usize> = None;
+        for (col, &idx) in window_indices.iter().enumerate() {
+            let branch = get_visual_branch(&state.graph.nodes[idx], state.zoom.level);
+            if branch > max_branch { continue; }
+
+            if let Some(pb) = prev_branch {
+                if pb != branch {
+                    let (lo, hi) = if pb < branch { (pb, branch) } else { (branch, pb) };
+                    // Place connector at the arriving node's column
+                    for gap in lo..hi {
+                        connector_gaps[gap].insert(col);
+                    }
+                }
+            }
+            prev_branch = Some(branch);
+        }
+
+        // Render each visual branch row + connector row
         for visual_branch in 0..=max_branch {
-            // Row label
             let row_label = match state.zoom.level {
                 ZoomLevel::Conversations => {
                     match visual_branch {
@@ -448,8 +470,8 @@ fn render_timeline(f: &mut Frame, area: Rect, state: &AppState) {
                         style = style.fg(Color::Yellow).add_modifier(Modifier::BOLD);
                     }
 
-                    row_spans.push(Span::styled(display_symbol, style));
                     row_spans.push(Span::styled("──", Style::default().fg(Color::DarkGray)));
+                    row_spans.push(Span::styled(display_symbol, style));
                 } else {
                     row_spans.push(Span::raw("   "));
                 }
@@ -457,80 +479,17 @@ fn render_timeline(f: &mut Frame, area: Rect, state: &AppState) {
 
             lines.push(Line::from(row_spans));
 
-            // Draw connector row showing branching between adjacent rows
+            // Draw connector row for this gap
             if visual_branch < max_branch {
-                let next_branch = visual_branch + 1;
-
-                // Collect columns that need a │ connector between these two rows.
-                // A connector appears when a node on one row has a parent on the other.
-                let mut connector_cols: std::collections::HashSet<usize> =
-                    std::collections::HashSet::new();
-
-                // Cols occupied by each row
-                let upper_cols: Vec<usize> = window_indices.iter()
-                    .enumerate()
-                    .filter(|(_, &idx)| get_visual_branch(&state.graph.nodes[idx], state.zoom.level) == visual_branch)
-                    .map(|(col, _)| col)
-                    .collect();
-                let lower_cols: Vec<usize> = window_indices.iter()
-                    .enumerate()
-                    .filter(|(_, &idx)| get_visual_branch(&state.graph.nodes[idx], state.zoom.level) == next_branch)
-                    .map(|(col, _)| col)
-                    .collect();
-
-                for (col, &idx) in window_indices.iter().enumerate() {
-                    let node = &state.graph.nodes[idx];
-                    let branch = get_visual_branch(node, state.zoom.level);
-
-                    // Node on lower row with parent on upper row (downward: e.g. Asst→Tool)
-                    if branch == next_branch {
-                        let has_parent_above = node.parent_id.as_deref()
-                            .and_then(|pid| node_id_to_col.get(pid))
-                            .map(|&pc| get_visual_branch(&state.graph.nodes[window_indices[pc]], state.zoom.level) == visual_branch)
-                            .unwrap_or(false);
-
-                        if has_parent_above {
-                            if let Some(&pc) = node.parent_id.as_deref().and_then(|pid| node_id_to_col.get(pid)) {
-                                connector_cols.insert(pc);
-                            }
-                        } else {
-                            // Fallback: nearest preceding node on upper row
-                            if let Some(&pc) = upper_cols.iter().rev().find(|&&c| c <= col) {
-                                connector_cols.insert(pc);
-                            }
-                        }
-                    }
-
-                    // Node on upper row with parent on lower row (upward: e.g. last Asst→next User)
-                    if branch == visual_branch {
-                        let has_parent_below = node.parent_id.as_deref()
-                            .and_then(|pid| node_id_to_col.get(pid))
-                            .map(|&pc| get_visual_branch(&state.graph.nodes[window_indices[pc]], state.zoom.level) == next_branch)
-                            .unwrap_or(false);
-
-                        if has_parent_below {
-                            connector_cols.insert(col);
-                        } else {
-                            // Fallback: nearest preceding node on lower row
-                            if let Some(&pc) = lower_cols.iter().rev().find(|&&c| c <= col) {
-                                // Only if this upper node directly follows a lower-row sequence
-                                // (i.e., no upper-row node between pc and col)
-                                let has_upper_between = upper_cols.iter().any(|&c| c > pc && c < col);
-                                if !has_upper_between {
-                                    connector_cols.insert(col);
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if !connector_cols.is_empty() {
+                let gap_cols = &connector_gaps[visual_branch];
+                if !gap_cols.is_empty() {
                     let conn_style = Style::default().fg(Color::DarkGray);
-                    let num_cols = window_indices.len();
                     let mut cells: Vec<[char; 3]> = vec![[' ', ' ', ' ']; num_cols];
 
-                    for &c in &connector_cols {
-                        cells[c][0] = '│';
+                    for &c in gap_cols {
+                        if c < num_cols {
+                            cells[c][0] = '│';
+                        }
                     }
 
                     let mut conn_spans = vec![Span::raw("     ")];
