@@ -315,30 +315,39 @@ fn render_timeline(f: &mut Frame, area: Rect, state: &AppState) {
         let end = (start + nodes_per_screen).min(visible_indices.len());
         let window_indices = &visible_indices[start..end];
 
-        // Timestamps row - show smartly: every 3rd node or when time changes significantly
+        // Timestamps row - show smartly: every 4th node or when time changes significantly
         let mut time_line = vec![Span::raw("Time  ")];
         let mut last_shown_time: Option<chrono::DateTime<chrono::Utc>> = None;
+        let mut skip_next = 0;
 
         for (pos, &idx) in window_indices.iter().enumerate() {
             let node = &state.graph.nodes[idx];
 
+            if skip_next > 0 {
+                skip_next -= 1;
+                time_line.push(Span::raw("   "));
+                continue;
+            }
+
             // Decide if we should show this timestamp
             let should_show = if let Some(last_time) = last_shown_time {
-                // Show if: 1) Every 3rd position, OR 2) Time changed by 1+ minutes
-                pos % 3 == 0 || (node.timestamp - last_time).num_seconds() >= 60
+                // Show if: 1) Every 5th position, OR 2) Time changed by 1+ minutes
+                pos % 5 == 0 || (node.timestamp - last_time).num_seconds() >= 60
             } else {
                 true // Always show first
             };
 
             if should_show {
                 let time = node.timestamp.format("%H:%M").to_string();
+                // Time is 5 chars, node is 3, so it spans ~2 nodes
                 time_line.push(Span::styled(
-                    format!("{:^6}", time),
+                    time,
                     Style::default().fg(Color::DarkGray)
                 ));
                 last_shown_time = Some(node.timestamp);
+                skip_next = 1; // Skip next node to give time space
             } else {
-                time_line.push(Span::raw("      ")); // Empty space
+                time_line.push(Span::raw("   "));
             }
         }
         lines.push(Line::from(time_line));
