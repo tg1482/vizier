@@ -315,15 +315,31 @@ fn render_timeline(f: &mut Frame, area: Rect, state: &AppState) {
         let end = (start + nodes_per_screen).min(visible_indices.len());
         let window_indices = &visible_indices[start..end];
 
-        // Timestamps row
+        // Timestamps row - show smartly: every 3rd node or when time changes significantly
         let mut time_line = vec![Span::raw("Time  ")];
-        for &idx in window_indices {
+        let mut last_shown_time: Option<chrono::DateTime<chrono::Utc>> = None;
+
+        for (pos, &idx) in window_indices.iter().enumerate() {
             let node = &state.graph.nodes[idx];
-            let time = node.timestamp.format("%H:%M").to_string();
-            time_line.push(Span::styled(
-                format!("{:^6}", time),
-                Style::default().fg(Color::DarkGray)
-            ));
+
+            // Decide if we should show this timestamp
+            let should_show = if let Some(last_time) = last_shown_time {
+                // Show if: 1) Every 3rd position, OR 2) Time changed by 1+ minutes
+                pos % 3 == 0 || (node.timestamp - last_time).num_seconds() >= 60
+            } else {
+                true // Always show first
+            };
+
+            if should_show {
+                let time = node.timestamp.format("%H:%M").to_string();
+                time_line.push(Span::styled(
+                    format!("{:^6}", time),
+                    Style::default().fg(Color::DarkGray)
+                ));
+                last_shown_time = Some(node.timestamp);
+            } else {
+                time_line.push(Span::raw("      ")); // Empty space
+            }
         }
         lines.push(Line::from(time_line));
         lines.push(Line::from(""));
@@ -349,7 +365,11 @@ fn render_timeline(f: &mut Frame, area: Rect, state: &AppState) {
                     match visual_branch {
                         0 => "User ",
                         1 => "Asst ",
-                        _ => &format!("L{:<3} ", visual_branch - 2),
+                        2 => "Tool ",
+                        3 => "Tool²",
+                        4 => "Tool³",
+                        5 => "Tool⁴",
+                        _ => "Tool⁺",
                     }
                 }
             };
