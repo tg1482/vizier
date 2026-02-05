@@ -73,7 +73,10 @@ fn main() -> Result<()> {
 
     let project_slug = SessionWatcher::get_project_slug(&project);
 
-    let mut watcher = SessionWatcher::new(claude_dir, &project_slug, &session_id)?;
+    // Get all available sessions for this project
+    let available_sessions = SessionWatcher::list_sessions(&claude_dir, &project_slug)?;
+
+    let mut watcher = SessionWatcher::new(claude_dir.clone(), &project_slug, &session_id)?;
     let events = watcher.read_all_events()?;
 
     if events.is_empty() {
@@ -88,12 +91,19 @@ fn main() -> Result<()> {
     // Start watching for file changes
     watcher.start_watching()?;
 
-    run_tui(graph, watcher)?;
+    run_tui(graph, watcher, session_id, available_sessions, claude_dir, project_slug)?;
 
     Ok(())
 }
 
-fn run_tui(initial_graph: types::Graph, mut watcher: SessionWatcher) -> Result<()> {
+fn run_tui(
+    initial_graph: types::Graph,
+    mut watcher: SessionWatcher,
+    session_id: String,
+    available_sessions: Vec<ui::SessionInfo>,
+    claude_dir: std::path::PathBuf,
+    project_slug: String,
+) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, Clear(ClearType::All), EnterAlternateScreen)?;
@@ -101,10 +111,16 @@ fn run_tui(initial_graph: types::Graph, mut watcher: SessionWatcher) -> Result<(
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut state = AppState::new(initial_graph);
+    let mut state = AppState::new(initial_graph, session_id.clone(), available_sessions);
     let mut last_node_count = state.graph.nodes.len();
+    let mut blink_counter = 0u32;
 
     loop {
+        // Toggle blink state every 5 frames (500ms)
+        blink_counter = blink_counter.wrapping_add(1);
+        if blink_counter % 5 == 0 {
+            state.blink_state = !state.blink_state;
+        }
         // Check for file updates
         if watcher.check_for_updates() {
             // Reload the graph
@@ -146,11 +162,56 @@ fn run_tui(initial_graph: types::Graph, mut watcher: SessionWatcher) -> Result<(
             if let Event::Key(key) = event::read()? {
                 match key.code {
                     KeyCode::Char('q') => break,
+                    KeyCode::Char('s') => state.toggle_session_list(),
                     KeyCode::Char('z') => state.toggle_focus(),
-                    KeyCode::Char('h') | KeyCode::Left => state.move_left(),
-                    KeyCode::Char('l') | KeyCode::Right => state.move_right(),
-                    KeyCode::Char('j') | KeyCode::Down => state.level_down(),
-                    KeyCode::Char('k') | KeyCode::Up => state.level_up(),
+                    KeyCode::Char('h') | KeyCode::Left => {
+                        if state.session_list_open {
+                            // Ignore in session list
+                        } else {
+                            state.move_left();
+                        }
+                    }
+                    KeyCode::Char('l') | KeyCode::Right => {
+                        if state.session_list_open {
+                            // Ignore in session list
+                        } else {
+                            state.move_right();
+                        }
+                    }
+                    KeyCode::Char('j') | KeyCode::Down => {
+                        if state.session_list_open {
+                            state.session_list_down();
+                        } else {
+                            state.level_down();
+                        }
+                    }
+                    KeyCode::Char('k') | KeyCode::Up => {
+                        if state.session_list_open {
+                            state.session_list_up();
+                        } else {
+                            state.level_up();
+                        }
+                    }
+                    KeyCode::Enter => {
+                        if state.session_list_open {
+                            // Switch session
+                            if let Some(new_session_id) = state.get_selected_session() {
+                                if new_session_id != state.session_id {
+                                    // Load new session
+                                    watcher = SessionWatcher::new(claude_dir.clone(), &project_slug, &new_session_id)?;
+                                    let events = watcher.read_all_events()?;
+                                    let mut builder = GraphBuilder::new();
+                                    if let Ok(new_graph) = builder.build_from_events(events) {
+                                        state.graph = new_graph.clone();
+                                        state.session_id = new_session_id;
+                                        last_node_count = state.graph.nodes.len();
+                                        watcher.start_watching()?;
+                                    }
+                                }
+                            }
+                            state.session_list_open = false;
+                        }
+                    }
                     KeyCode::Char('g') => state.cursor_in_level = 0,
                     KeyCode::Char('G') => {
                         let max_pos = state.get_nodes_in_current_level().saturating_sub(1);

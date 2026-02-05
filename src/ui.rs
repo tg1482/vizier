@@ -14,10 +14,44 @@ pub struct AppState {
     pub cursor_in_level: usize,   // Position within that level
     pub zoom: ZoomState,
     pub focused_node: Option<usize>, // Which node is zoomed/expanded (if any)
+    pub blink_state: bool,        // Toggles for blinking effect
+    pub session_id: String,       // Current session ID
+    pub available_sessions: Vec<SessionInfo>, // All sessions in this project
+    pub session_list_open: bool,  // Whether session picker is showing
+    pub session_list_cursor: usize, // Cursor in session list
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionInfo {
+    pub id: String,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    pub node_count: usize,
 }
 
 impl AppState {
-    pub fn new(graph: Graph) -> Self {
+    // Check if a node is actively running (tool without result yet)
+    fn is_node_active(&self, idx: usize) -> bool {
+        if let Some(node) = self.graph.nodes.get(idx) {
+            // Check if it's a ToolUse
+            if matches!(node.node_type, NodeType::ToolUse { .. }) {
+                let tool_id = &node.id;
+                // Look for a matching ToolResult after this node
+                let has_result = self.graph.nodes.iter()
+                    .skip(idx + 1)
+                    .any(|n| {
+                        if let Some(parent_id) = &n.parent_id {
+                            parent_id == tool_id && matches!(n.node_type, NodeType::ToolResult { .. })
+                        } else {
+                            false
+                        }
+                    });
+                return !has_result;
+            }
+        }
+        false
+    }
+
+    pub fn new(graph: Graph, session_id: String, available_sessions: Vec<SessionInfo>) -> Self {
         // Find the last User message as starting point
         let last_user_idx = graph.nodes.iter()
             .rposition(|n| matches!(n.node_type, NodeType::UserMessage(_)))
@@ -36,7 +70,39 @@ impl AppState {
             cursor_in_level,
             zoom: ZoomState::new(),
             focused_node: None,
+            blink_state: false,
+            session_id,
+            available_sessions,
+            session_list_open: false,
+            session_list_cursor: 0,
         }
+    }
+
+    pub fn toggle_session_list(&mut self) {
+        self.session_list_open = !self.session_list_open;
+        if self.session_list_open {
+            // Find current session in list
+            self.session_list_cursor = self.available_sessions.iter()
+                .position(|s| s.id == self.session_id)
+                .unwrap_or(0);
+        }
+    }
+
+    pub fn session_list_up(&mut self) {
+        if self.session_list_cursor > 0 {
+            self.session_list_cursor -= 1;
+        }
+    }
+
+    pub fn session_list_down(&mut self) {
+        if self.session_list_cursor < self.available_sessions.len().saturating_sub(1) {
+            self.session_list_cursor += 1;
+        }
+    }
+
+    pub fn get_selected_session(&self) -> Option<String> {
+        self.available_sessions.get(self.session_list_cursor)
+            .map(|s| s.id.clone())
     }
 
     // Toggle focus/zoom on current node
@@ -189,6 +255,11 @@ pub fn render(f: &mut Frame, state: &AppState) {
     if state.zoom.level != crate::zoom::ZoomLevel::Focus {
         render_details(f, chunks[1], state);
     }
+
+    // Render session list overlay if open
+    if state.session_list_open {
+        render_session_list(f, f.area(), state);
+    }
 }
 
 fn render_timeline(f: &mut Frame, area: Rect, state: &AppState) {
@@ -203,7 +274,7 @@ fn render_timeline(f: &mut Frame, area: Rect, state: &AppState) {
         ),
         Span::styled("● LIVE ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
         Span::styled(
-            "h/l:navigate  j/k:level  z:focus  g/G:start/end  q:quit",
+            "h/l:navigate  j/k:level  z:focus  g/G:start/end  s:sessions  q:quit",
             Style::default().fg(Color::DarkGray)
         )
     ]));
@@ -311,12 +382,29 @@ fn render_timeline(f: &mut Frame, area: Rect, state: &AppState) {
                     let is_cursor = visual_branch == state.current_level
                         && (start + pos) == cursor_global_pos;
 
+                    // Check if this node is actively running (tool without result)
+                    let is_active = state.is_node_active(idx);
+
                     let mut style = Style::default().fg(color);
+                    let display_symbol = if is_active {
+                        // Alternate between symbol and spinner for active tools
+                        if state.blink_state {
+                            "◐" // Spinning indicator
+                        } else {
+                            "◑" // Spinning indicator (alternate frame)
+                        }
+                    } else {
+                        symbol
+                    };
+
                     if is_cursor {
                         style = style.bg(Color::White).fg(Color::Black).add_modifier(Modifier::BOLD);
+                    } else if is_active {
+                        // Active tools are bright yellow/orange
+                        style = style.fg(Color::Yellow).add_modifier(Modifier::BOLD);
                     }
 
-                    row_spans.push(Span::styled(symbol, style));
+                    row_spans.push(Span::styled(display_symbol, style));
                     row_spans.push(Span::styled("──", Style::default().fg(Color::DarkGray)));
                     pos_in_branch += 1;
                 } else {
@@ -693,4 +781,71 @@ fn render_node_box(node: &Node) -> Vec<Line> {
     ]));
 
     lines
+}
+
+
+fn render_session_list(f: &mut Frame, area: Rect, state: &AppState) {
+    use ratatui::layout::Alignment;
+
+    // Center a box for session selection
+    let width = area.width.min(80);
+    let height = area.height.min(20);
+    let x = (area.width.saturating_sub(width)) / 2;
+    let y = (area.height.saturating_sub(height)) / 2;
+
+    let popup_area = Rect {
+        x: area.x + x,
+        y: area.y + y,
+        width,
+        height,
+    };
+
+    let mut lines = vec![
+        Line::from(Span::styled(
+            "Select Session (Enter to switch, s to close)",
+            Style::default().add_modifier(Modifier::BOLD)
+        )),
+        Line::from(""),
+    ];
+
+    for (idx, session) in state.available_sessions.iter().enumerate() {
+        let is_current = session.id == state.session_id;
+        let is_selected = idx == state.session_list_cursor;
+
+        let prefix = if is_selected { "> " } else { "  " };
+        let current_marker = if is_current { " (current)" } else { "" };
+
+        let time_str = session.timestamp.format("%Y-%m-%d %H:%M").to_string();
+        let short_id = if session.id.len() > 8 {
+            &session.id[..8]
+        } else {
+            &session.id
+        };
+
+        let text = format!(
+            "{}{} | {} | {} events{}",
+            prefix, short_id, time_str, session.node_count, current_marker
+        );
+
+        let mut style = Style::default();
+        if is_current {
+            style = style.fg(Color::Green);
+        }
+        if is_selected {
+            style = style.add_modifier(Modifier::BOLD).fg(Color::Cyan);
+        }
+
+        lines.push(Line::from(Span::styled(text, style)));
+    }
+
+    let paragraph = Paragraph::new(lines)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Cyan))
+                .title(" Sessions ")
+        )
+        .wrap(Wrap { trim: true });
+
+    f.render_widget(paragraph, popup_area);
 }

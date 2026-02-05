@@ -158,4 +158,40 @@ impl SessionWatcher {
     pub fn get_project_slug(cwd: &str) -> String {
         cwd.replace('/', "-")
     }
+
+    pub fn list_sessions(claude_dir: &PathBuf, project: &str) -> Result<Vec<crate::ui::SessionInfo>> {
+        let project_dir = claude_dir.join("projects").join(project);
+        let mut sessions = Vec::new();
+
+        if let Ok(entries) = std::fs::read_dir(&project_dir) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) == Some("jsonl") {
+                    if let Some(session_id) = path.file_stem().and_then(|s| s.to_str()) {
+                        // Get metadata
+                        if let Ok(metadata) = std::fs::metadata(&path) {
+                            if let Ok(modified) = metadata.modified() {
+                                let timestamp: chrono::DateTime<chrono::Utc> = modified.into();
+
+                                // Count lines as rough node count
+                                let node_count = std::fs::read_to_string(&path)
+                                    .map(|s| s.lines().count())
+                                    .unwrap_or(0);
+
+                                sessions.push(crate::ui::SessionInfo {
+                                    id: session_id.to_string(),
+                                    timestamp,
+                                    node_count,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Sort by timestamp, newest first
+        sessions.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+        Ok(sessions)
+    }
 }
