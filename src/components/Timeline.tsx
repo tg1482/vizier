@@ -53,8 +53,8 @@ const ROW_LABELS: Record<number, string> = {
   5: "Tool\u2074",
 }
 
-// Column width for each node slot
-const COL_W = 4
+// Column width for each node slot — matches Rust's 3-char cells (──X)
+const COL_W = 3
 
 export function Timeline({ graph, currentLevel, cursorInLevel, zoom, blinkState, termWidth }: Props) {
   const visibleIndices = filterByZoom(graph.nodes, zoom)
@@ -76,7 +76,7 @@ export function Timeline({ graph, currentLevel, cursorInLevel, zoom, blinkState,
   const cursorGlobalPos = currentLevelPositions[cursorInLevel] ?? 0
 
   // Camera-centric windowing
-  const labelW = 6 // "User " + padding
+  const labelW = 5 // "User " = 5 chars, matching Rust's {:<5}
   const nodesPerScreen = Math.max(1, Math.floor((termWidth - labelW - 4) / COL_W))
   const halfScreen = Math.floor(nodesPerScreen / 2)
 
@@ -100,17 +100,18 @@ export function Timeline({ graph, currentLevel, cursorInLevel, zoom, blinkState,
   }
   maxBranch = Math.min(maxBranch, 6)
 
-  // Pre-compute connectors between consecutive nodes that change branch
-  const connectorGaps: Set<number>[] = Array.from({ length: maxBranch + 1 }, () => new Set())
+  // Pre-compute connectors: when the visual branch changes between consecutive
+  // nodes, place │ at the arriving column through all intermediate gap rows.
+  const connectorGaps: Set<number>[] = Array.from({ length: maxBranch }, () => new Set())
   let prevBranch: number | null = null
   for (let col = 0; col < numCols; col++) {
     const branch = getVisualBranch(graph.nodes[windowIndices[col]], zoom)
-    if (branch > maxBranch) { prevBranch = branch; continue }
+    if (branch > maxBranch) continue
     if (prevBranch !== null && prevBranch !== branch) {
       const lo = Math.min(prevBranch, branch)
       const hi = Math.max(prevBranch, branch)
       for (let gap = lo; gap < hi; gap++) {
-        if (gap < connectorGaps.length) connectorGaps[gap].add(col)
+        connectorGaps[gap].add(col)
       }
     }
     prevBranch = branch
@@ -161,13 +162,12 @@ export function Timeline({ graph, currentLevel, cursorInLevel, zoom, blinkState,
         const active = isNodeActive(graph, idx)
         const displaySymbol = active ? (blinkState ? "\u25D0" : "\u25D1") : symbol
 
-        // Each cell: "──X " = 4 chars (connector + symbol + space)
+        // Each cell: "──X" = 3 chars (connector + symbol)
         if (isCursor) {
           cellSpans.push(
             <Text key={col}>
               <Text dimColor>{"──"}</Text>
               <Text backgroundColor="white" color="black" bold>{displaySymbol}</Text>
-              {" "}
             </Text>
           )
         } else if (active) {
@@ -175,7 +175,6 @@ export function Timeline({ graph, currentLevel, cursorInLevel, zoom, blinkState,
             <Text key={col}>
               <Text dimColor>{"──"}</Text>
               <Text color="yellow" bold>{displaySymbol}</Text>
-              {" "}
             </Text>
           )
         } else {
@@ -183,7 +182,6 @@ export function Timeline({ graph, currentLevel, cursorInLevel, zoom, blinkState,
             <Text key={col}>
               <Text dimColor>{"──"}</Text>
               <Text color={color}>{displaySymbol}</Text>
-              {" "}
             </Text>
           )
         }
@@ -206,7 +204,8 @@ export function Timeline({ graph, currentLevel, cursorInLevel, zoom, blinkState,
       const connSpans: React.ReactNode[] = []
       for (let col = 0; col < numCols; col++) {
         if (connectorGaps[vb].has(col)) {
-          connSpans.push(<Text key={col} dimColor>{"\u2502".padEnd(COL_W)}</Text>)
+          // "│  " — connector at start of cell (3 chars), visually adjacent to prev symbol
+          connSpans.push(<Text key={col} dimColor>{"\u2502  "}</Text>)
         } else {
           connSpans.push(<Text key={col}>{pad(COL_W)}</Text>)
         }
