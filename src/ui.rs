@@ -681,10 +681,7 @@ fn format_node_details(node: &Node) -> Vec<Line> {
         NodeType::ToolUse { name, input } => {
             lines.push(Line::from(Span::styled(format!("Tool: {}", name), Style::default().fg(Color::Yellow))));
             lines.push(Line::from(""));
-            lines.push(Line::from("Input:"));
-            for line in input.lines().take(5) {
-                lines.push(Line::from(line.to_string()));
-            }
+            render_json_or_text(&mut lines, "Input", input);
         }
         NodeType::ToolResult { output, is_error } => {
             let color = if *is_error { Color::Red } else { Color::Green };
@@ -693,9 +690,7 @@ fn format_node_details(node: &Node) -> Vec<Line> {
             if output.trim().is_empty() {
                 lines.push(Line::from(Span::styled("(empty result)", Style::default().fg(Color::DarkGray))));
             } else {
-                for line in output.lines().take(20) {
-                    lines.push(Line::from(line.to_string()));
-                }
+                render_json_or_text(&mut lines, "Output", output);
             }
         }
         NodeType::AgentStart { agent_id, agent_type } => {
@@ -714,6 +709,71 @@ fn format_node_details(node: &Node) -> Vec<Line> {
     }
 
     lines
+}
+
+fn render_json_or_text(lines: &mut Vec<Line<'static>>, label: &str, text: &str) {
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(text) {
+        render_json_value(lines, &value, 0);
+    } else {
+        lines.push(Line::from(Span::styled(format!("{}:", label), Style::default().fg(Color::Gray))));
+        for line in text.lines().take(30) {
+            lines.push(Line::from(line.to_string()));
+        }
+    }
+}
+
+fn render_json_value(lines: &mut Vec<Line<'static>>, value: &serde_json::Value, indent: usize) {
+    let pad = "  ".repeat(indent);
+    match value {
+        serde_json::Value::Object(map) => {
+            for (key, val) in map {
+                match val {
+                    serde_json::Value::Object(_) | serde_json::Value::Array(_) => {
+                        lines.push(Line::from(vec![
+                            Span::raw(pad.clone()),
+                            Span::styled(format!("{}:", key), Style::default().fg(Color::Yellow)),
+                        ]));
+                        render_json_value(lines, val, indent + 1);
+                    }
+                    _ => {
+                        let val_str = match val {
+                            serde_json::Value::String(s) => s.clone(),
+                            serde_json::Value::Null => "null".to_string(),
+                            other => other.to_string(),
+                        };
+                        lines.push(Line::from(vec![
+                            Span::raw(pad.clone()),
+                            Span::styled(format!("{}: ", key), Style::default().fg(Color::Yellow)),
+                            Span::raw(val_str),
+                        ]));
+                    }
+                }
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for (i, item) in arr.iter().enumerate().take(10) {
+                lines.push(Line::from(vec![
+                    Span::raw(pad.clone()),
+                    Span::styled(format!("[{}]", i), Style::default().fg(Color::DarkGray)),
+                ]));
+                render_json_value(lines, item, indent + 1);
+            }
+            if arr.len() > 10 {
+                lines.push(Line::from(vec![
+                    Span::raw(pad),
+                    Span::styled(format!("... {} more items", arr.len() - 10), Style::default().fg(Color::DarkGray)),
+                ]));
+            }
+        }
+        serde_json::Value::String(s) => {
+            for line in s.lines().take(20) {
+                lines.push(Line::from(vec![Span::raw(format!("{}{}", pad, line))]));
+            }
+        }
+        other => {
+            lines.push(Line::from(vec![Span::raw(format!("{}{}", pad, other))]));
+        }
+    }
 }
 
 fn truncate(s: &str, max_len: usize) -> String {
