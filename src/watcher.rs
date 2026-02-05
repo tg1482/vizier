@@ -1,12 +1,17 @@
 use crate::types::SessionEvent;
 use anyhow::{Context, Result};
+use notify::{Watcher, RecursiveMode, Event, EventKind};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
+use std::sync::mpsc::{channel, Receiver, TryRecvError};
+use std::time::Duration;
 
 pub struct SessionWatcher {
     pub session_file: PathBuf,
     pub agent_files: Vec<PathBuf>,
+    pub watcher: Option<notify::RecommendedWatcher>,
+    pub receiver: Option<Receiver<notify::Result<Event>>>,
 }
 
 impl SessionWatcher {
@@ -33,7 +38,47 @@ impl SessionWatcher {
         Ok(Self {
             session_file,
             agent_files,
+            watcher: None,
+            receiver: None,
         })
+    }
+
+    pub fn start_watching(&mut self) -> Result<()> {
+        let (tx, rx) = channel();
+
+        let mut watcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
+            if let Ok(event) = &res {
+                // Only care about modify events
+                if matches!(event.kind, EventKind::Modify(_)) {
+                    let _ = tx.send(res);
+                }
+            }
+        })?;
+
+        // Watch the main session file
+        watcher.watch(&self.session_file, RecursiveMode::NonRecursive)?;
+
+        // Watch agent files if they exist
+        for agent_file in &self.agent_files {
+            watcher.watch(agent_file, RecursiveMode::NonRecursive)?;
+        }
+
+        self.watcher = Some(watcher);
+        self.receiver = Some(rx);
+
+        Ok(())
+    }
+
+    pub fn check_for_updates(&self) -> bool {
+        if let Some(rx) = &self.receiver {
+            match rx.try_recv() {
+                Ok(_) => true,  // File changed!
+                Err(TryRecvError::Empty) => false,  // No changes
+                Err(TryRecvError::Disconnected) => false,  // Watcher died
+            }
+        } else {
+            false
+        }
     }
 
     pub fn read_all_events(&self) -> Result<Vec<SessionEvent>> {

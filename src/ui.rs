@@ -161,7 +161,7 @@ impl AppState {
             .and_then(|idx| self.graph.nodes.get(idx))
     }
 
-    fn get_max_level(&self) -> usize {
+    pub fn get_max_level(&self) -> usize {
         self.graph.nodes.iter()
             .map(|n| get_visual_branch(n, self.zoom.level))
             .max()
@@ -194,15 +194,16 @@ pub fn render(f: &mut Frame, state: &AppState) {
 fn render_timeline(f: &mut Frame, area: Rect, state: &AppState) {
     let mut lines = Vec::new();
 
-    // Title with zoom level
+    // Title with zoom level and live indicator
     let zoom_label = get_zoom_label(state.zoom.level);
     lines.push(Line::from(vec![
         Span::styled(
             format!("[{}] ", zoom_label),
             Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)
         ),
+        Span::styled("● LIVE ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
         Span::styled(
-            "h/l:navigate-level  j/k:change-level  z:focus  g/G:start/end  q:quit",
+            "h/l:navigate  j/k:level  z:focus  g/G:start/end  q:quit",
             Style::default().fg(Color::DarkGray)
         )
     ]));

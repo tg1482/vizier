@@ -73,7 +73,7 @@ fn main() -> Result<()> {
 
     let project_slug = SessionWatcher::get_project_slug(&project);
 
-    let watcher = SessionWatcher::new(claude_dir, &project_slug, &session_id)?;
+    let mut watcher = SessionWatcher::new(claude_dir, &project_slug, &session_id)?;
     let events = watcher.read_all_events()?;
 
     if events.is_empty() {
@@ -86,14 +86,17 @@ fn main() -> Result<()> {
     let graph = builder.build_from_events(events)?.clone();
 
     println!("Loaded {} nodes from session {}", graph.nodes.len(), session_id);
-    println!("Starting TUI...");
+    println!("Starting TUI with real-time updates...");
 
-    run_tui(graph)?;
+    // Start watching for file changes
+    watcher.start_watching()?;
+
+    run_tui(graph, watcher)?;
 
     Ok(())
 }
 
-fn run_tui(graph: types::Graph) -> Result<()> {
+fn run_tui(initial_graph: types::Graph, mut watcher: SessionWatcher) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
@@ -101,9 +104,35 @@ fn run_tui(graph: types::Graph) -> Result<()> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut state = AppState::new(graph);
+    let mut state = AppState::new(initial_graph);
+    let mut last_node_count = state.graph.nodes.len();
 
     loop {
+        // Check for file updates
+        if watcher.check_for_updates() {
+            // Reload the graph
+            if let Ok(events) = watcher.read_all_events() {
+                let mut builder = GraphBuilder::new();
+                if let Ok(new_graph) = builder.build_from_events(events) {
+                    let new_count = new_graph.nodes.len();
+                    if new_count != last_node_count {
+                        // Save current position/level before updating
+                        let current_level = state.current_level;
+                        let current_pos = state.cursor_in_level;
+
+                        // Update the graph
+                        state.graph = new_graph.clone();
+                        last_node_count = new_count;
+
+                        // Try to restore position, but clamp to valid range
+                        state.current_level = current_level.min(state.get_max_level());
+                        let max_in_level = state.get_nodes_in_current_level().saturating_sub(1);
+                        state.cursor_in_level = current_pos.min(max_in_level);
+                    }
+                }
+            }
+        }
+
         terminal.draw(|f| ui::render(f, &state))?;
 
         if event::poll(std::time::Duration::from_millis(100))? {
