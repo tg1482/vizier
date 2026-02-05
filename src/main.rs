@@ -10,7 +10,7 @@ use clap::Parser as ClapParser;
 use crossterm::{
     event::{self, Event, KeyCode},
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen, Clear, ClearType},
 };
 use graph::GraphBuilder;
 use ratatui::{backend::CrosstermBackend, Terminal};
@@ -85,9 +85,6 @@ fn main() -> Result<()> {
     let mut builder = GraphBuilder::new();
     let graph = builder.build_from_events(events)?.clone();
 
-    println!("Loaded {} nodes from session {}", graph.nodes.len(), session_id);
-    println!("Starting TUI with real-time updates...");
-
     // Start watching for file changes
     watcher.start_watching()?;
 
@@ -99,7 +96,7 @@ fn main() -> Result<()> {
 fn run_tui(initial_graph: types::Graph, mut watcher: SessionWatcher) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, Clear(ClearType::All), EnterAlternateScreen)?;
 
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
@@ -119,15 +116,25 @@ fn run_tui(initial_graph: types::Graph, mut watcher: SessionWatcher) -> Result<(
                         // Save current position/level before updating
                         let current_level = state.current_level;
                         let current_pos = state.cursor_in_level;
+                        let old_max = state.get_nodes_in_current_level().saturating_sub(1);
+
+                        // Check if cursor is at or near the end (within last 2 positions)
+                        let is_at_end = current_pos >= old_max.saturating_sub(1);
 
                         // Update the graph
                         state.graph = new_graph.clone();
                         last_node_count = new_count;
 
-                        // Try to restore position, but clamp to valid range
+                        // Restore position
                         state.current_level = current_level.min(state.get_max_level());
-                        let max_in_level = state.get_nodes_in_current_level().saturating_sub(1);
-                        state.cursor_in_level = current_pos.min(max_in_level);
+                        let new_max = state.get_nodes_in_current_level().saturating_sub(1);
+
+                        // If user was at the end, follow new content. Otherwise stay put.
+                        if is_at_end {
+                            state.cursor_in_level = new_max;
+                        } else {
+                            state.cursor_in_level = current_pos.min(new_max);
+                        }
                     }
                 }
             }

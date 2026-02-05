@@ -175,7 +175,7 @@ pub fn render(f: &mut Frame, state: &AppState) {
     let constraints = if state.zoom.level == crate::zoom::ZoomLevel::Focus {
         [Constraint::Min(20), Constraint::Length(8)]
     } else {
-        [Constraint::Min(15), Constraint::Length(12)]
+        [Constraint::Min(10), Constraint::Min(20)]
     };
 
     let chunks = Layout::default()
@@ -328,22 +328,6 @@ fn render_timeline(f: &mut Frame, area: Rect, state: &AppState) {
             lines.push(Line::from(row_spans));
         }
 
-        // Add labels row showing what each node is
-        if state.zoom.level == crate::zoom::ZoomLevel::Details {
-            lines.push(Line::from(""));
-            let mut label_spans = vec![Span::raw("      ")];
-
-            for &idx in window_indices {
-                let node = &state.graph.nodes[idx];
-                let (_, label, color) = get_compact_node_info(node);
-
-                label_spans.push(Span::styled(
-                    format!("{:<6}", truncate(&label, 6)),
-                    Style::default().fg(color)
-                ));
-            }
-            lines.push(Line::from(label_spans));
-        }
 
         // FOCUS: Show expanded view if a node is focused
         if let Some(focused_idx) = state.focused_node {
@@ -532,8 +516,12 @@ fn format_node_details(node: &Node) -> Vec<Line> {
             let color = if *is_error { Color::Red } else { Color::Green };
             lines.push(Line::from(Span::styled("Tool Result:", Style::default().fg(color))));
             lines.push(Line::from(""));
-            for line in output.lines().take(5) {
-                lines.push(Line::from(line.to_string()));
+            if output.trim().is_empty() {
+                lines.push(Line::from(Span::styled("(empty result)", Style::default().fg(Color::DarkGray))));
+            } else {
+                for line in output.lines().take(20) {
+                    lines.push(Line::from(line.to_string()));
+                }
             }
         }
         NodeType::AgentStart { agent_id, agent_type } => {
@@ -555,10 +543,13 @@ fn format_node_details(node: &Node) -> Vec<Line> {
 }
 
 fn truncate(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
+    let char_count = s.chars().count();
+    if char_count <= max_len {
         s.to_string()
     } else {
-        format!("{}...", &s[..max_len.saturating_sub(3)])
+        let truncate_at = max_len.saturating_sub(3);
+        let truncated: String = s.chars().take(truncate_at).collect();
+        format!("{}...", truncated)
     }
 }
 
@@ -653,17 +644,29 @@ fn render_node_box(node: &Node) -> Vec<Line> {
             }
         }
         NodeType::ToolResult { output, is_error } => {
-            for line_text in output.lines().take(5) {
-                let truncated = truncate(line_text, box_width - 6);
-                let padding = box_width - truncated.len() - 4;
-                let text_color = if *is_error { Color::Red } else { Color::Gray };
+            if output.trim().is_empty() {
+                let empty_msg = "(empty result)";
+                let padding = box_width - empty_msg.len() - 4;
                 lines.push(Line::from(vec![
                     Span::raw("      "),
                     Span::styled("│ ", Style::default().fg(Color::Cyan)),
-                    Span::styled(truncated, Style::default().fg(text_color)),
+                    Span::styled(empty_msg, Style::default().fg(Color::DarkGray)),
                     Span::raw(" ".repeat(padding)),
                     Span::styled("│", Style::default().fg(Color::Cyan)),
                 ]));
+            } else {
+                for line_text in output.lines().take(10) {
+                    let truncated = truncate(line_text, box_width - 6);
+                    let padding = box_width - truncated.len() - 4;
+                    let text_color = if *is_error { Color::Red } else { Color::Gray };
+                    lines.push(Line::from(vec![
+                        Span::raw("      "),
+                        Span::styled("│ ", Style::default().fg(Color::Cyan)),
+                        Span::styled(truncated, Style::default().fg(text_color)),
+                        Span::raw(" ".repeat(padding)),
+                        Span::styled("│", Style::default().fg(Color::Cyan)),
+                    ]));
+                }
             }
         }
         NodeType::AgentStart { agent_id, .. } | NodeType::AgentEnd { agent_id } => {
