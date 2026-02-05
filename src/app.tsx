@@ -66,6 +66,23 @@ function findNearestInLevel(graph: Graph, level: number, zoom: ZoomLevel, target
   return bestPos
 }
 
+// Move to the next/prev node chronologically across all levels
+// Returns { level, pos } for the target node, or null if at boundary
+function stepChronological(
+  graph: Graph, zoom: ZoomLevel, currentNodeIdx: number | null, direction: 1 | -1
+): { level: number; pos: number } | null {
+  if (currentNodeIdx === null) return null
+  const nextIdx = currentNodeIdx + direction
+  if (nextIdx < 0 || nextIdx >= graph.nodes.length) return null
+  const node = graph.nodes[nextIdx]
+  const level = getVisualBranch(node, zoom)
+  let pos = 0
+  for (let i = 0; i < nextIdx; i++) {
+    if (getVisualBranch(graph.nodes[i], zoom) === level) pos++
+  }
+  return { level, pos }
+}
+
 const DETAILS_HEIGHT = 20
 
 // Find the last node's visual branch and position within that branch
@@ -254,14 +271,36 @@ export function App({ initialGraph, sessionId: initialSessionId, claudeDir, proj
     }
 
     // Timeline navigation — any manual nav disables follow
-    if (input === "h" || key.leftArrow) {
+
+    // Shift+arrow: stay within current level
+    if (key.shift && key.leftArrow) {
       setFollow(false); followRef.current = false
       setCursorInLevel(prev => Math.max(prev - 1, 0))
       return
     }
-    if (input === "l" || key.rightArrow) {
+    if (key.shift && key.rightArrow) {
       setFollow(false); followRef.current = false
       setCursorInLevel(prev => Math.min(prev + 1, nodesInLevel - 1))
+      return
+    }
+
+    // h/l/arrows: chronological — move to next/prev node across all levels
+    if (input === "h" || key.leftArrow) {
+      setFollow(false); followRef.current = false
+      const target = stepChronological(graph, zoom, currentNodeIdx, -1)
+      if (target) {
+        setCurrentLevel(target.level)
+        setCursorInLevel(target.pos)
+      }
+      return
+    }
+    if (input === "l" || key.rightArrow) {
+      setFollow(false); followRef.current = false
+      const target = stepChronological(graph, zoom, currentNodeIdx, 1)
+      if (target) {
+        setCurrentLevel(target.level)
+        setCursorInLevel(target.pos)
+      }
       return
     }
     if (input === "j" || key.downArrow) {
