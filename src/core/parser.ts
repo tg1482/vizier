@@ -7,7 +7,7 @@ function generateId(): string {
 
 export function parseEventToNodes(event: SessionEvent): Node[] {
   const nodes: Node[] = []
-  const branchLevel = event.isSidechain ? 1 : 0
+  const branchLevel = 0
   const ts = new Date(event.timestamp).getTime()
   const uuid = event.uuid || generateId()
 
@@ -81,16 +81,7 @@ export function parseEventToNodes(event: SessionEvent): Node[] {
     }
   }
 
-  if (event.type === "progress") {
-    nodes.push({
-      id: uuid,
-      parentId: event.parentUuid,
-      nodeType: { kind: "progress", text: "Progress update" },
-      timestamp: ts,
-      branchLevel,
-      agentId: event.agentId,
-    })
-  }
+  // Skip progress events — they're streaming noise, not meaningful turns
 
   return nodes
 }

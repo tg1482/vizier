@@ -22,19 +22,26 @@ function getNodeInfo(node: Node): { symbol: string; color: string } {
       return node.nodeType.isError
         ? { symbol: "\u2717", color: "red" }                         // ✗
         : { symbol: "\u2713", color: "green" }                       // ✓
+    case "tool_call":
+      if (node.nodeType.output === null) return { symbol: "\u2B22", color: "yellow" }  // ⬢ pending
+      return node.nodeType.isError
+        ? { symbol: "\u2717", color: "red" }                         // ✗ failed
+        : { symbol: "\u2713", color: "green" }                       // ✓ success
     case "agent_start": return { symbol: "\u27D0", color: "magenta" } // ⟐
     case "agent_end": return { symbol: "\u27D0", color: "gray" }
     case "progress": return { symbol: "\u25CB", color: "gray" }      // ○
   }
 }
 
-function isNodeActive(graph: Graph, idx: number): boolean {
-  const node = graph.nodes[idx]
-  if (node.nodeType.kind !== "tool_use") return false
-  const toolId = node.id
-  return !graph.nodes.slice(idx + 1).some(
-    n => n.parentId === toolId && n.nodeType.kind === "tool_result"
-  )
+function isNodeActive(_graph: Graph, idx: number): boolean {
+  const node = _graph.nodes[idx]
+  if (node.nodeType.kind === "tool_call") return node.nodeType.output === null
+  if (node.nodeType.kind === "tool_use") {
+    return !_graph.nodes.slice(idx + 1).some(
+      n => n.parentId === node.id && n.nodeType.kind === "tool_result"
+    )
+  }
+  return false
 }
 
 function formatTime(ts: number): string {

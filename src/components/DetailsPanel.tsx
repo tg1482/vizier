@@ -56,6 +56,27 @@ function nodeToLines(node: Node): ContentLine[] {
       }
       break
     }
+    case "tool_call": {
+      const statusColor = node.nodeType.output === null ? "yellow"
+        : node.nodeType.isError ? "red" : "green"
+      const statusLabel = node.nodeType.output === null ? "PENDING"
+        : node.nodeType.isError ? "ERROR" : "OK"
+      lines.push({ text: `Tool: ${node.nodeType.name} [${statusLabel}]`, color: statusColor })
+      lines.push({ text: "" })
+      lines.push({ text: "\u2500\u2500 Request \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500", color: "yellow" })
+      jsonToLines(lines, node.nodeType.input, 1)
+      if (node.nodeType.output !== null) {
+        lines.push({ text: "" })
+        lines.push({ text: "\u2500\u2500 Response \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500", color: statusColor })
+        const out = node.nodeType.output.trim()
+        if (out) {
+          jsonToLines(lines, out, 1)
+        } else {
+          lines.push({ text: "  (empty)", dimColor: true })
+        }
+      }
+      break
+    }
     case "agent_start":
       lines.push({ text: "Agent Start:", color: "magenta" })
       lines.push({ text: `Type: ${node.nodeType.agentType}` })

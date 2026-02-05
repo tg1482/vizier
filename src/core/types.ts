@@ -30,6 +30,7 @@ export type NodeType =
   | { kind: "assistant"; text: string }
   | { kind: "tool_use"; name: string; input: string }
   | { kind: "tool_result"; output: string; isError: boolean }
+  | { kind: "tool_call"; name: string; input: string; output: string | null; isError: boolean }
   | { kind: "agent_start"; agentId: string; agentType: string }
   | { kind: "agent_end"; agentId: string }
   | { kind: "progress"; text: string }
