@@ -1,5 +1,5 @@
 use crate::types::{Graph, Node, NodeType};
-use crate::zoom::{ZoomLevel, ZoomState, filter_by_zoom, get_zoom_label};
+use crate::zoom::{ZoomLevel, ZoomState, filter_by_zoom, get_zoom_label, get_visual_branch};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -127,7 +127,7 @@ fn render_timeline(f: &mut Frame, area: Rect, state: &AppState) {
         let end = (start + nodes_per_screen).min(visible_indices.len());
         let window_indices = &visible_indices[start..end];
 
-        // Timestamps
+        // Timestamps row
         let mut time_line = vec![Span::raw("Time  ")];
         for &idx in window_indices {
             let node = &state.graph.nodes[idx];
@@ -140,26 +140,45 @@ fn render_timeline(f: &mut Frame, area: Rect, state: &AppState) {
         lines.push(Line::from(time_line));
         lines.push(Line::from(""));
 
-        // Find max branch level in visible nodes
-        let max_branch = window_indices.iter()
-            .map(|&idx| state.graph.nodes[idx].branch_level)
+        // Calculate max visual branch (not actual branch level!)
+        let max_visual_branch = window_indices.iter()
+            .map(|&idx| get_visual_branch(&state.graph.nodes[idx], state.zoom.level))
             .max()
-            .unwrap_or(0);
+            .unwrap_or(1);
 
-        // Render each branch level as a horizontal row
-        for branch in 0..=max_branch.min(5) {
+        // Render each visual branch as a horizontal row
+        for visual_branch in 0..=max_visual_branch.min(6) {
+            // Better row labels based on zoom level and branch
+            let row_label = match state.zoom.level {
+                ZoomLevel::Conversations => {
+                    match visual_branch {
+                        0 => "User ",
+                        1 => "Asst ",
+                        _ => "     ",
+                    }
+                }
+                _ => {
+                    match visual_branch {
+                        0 => "User ",
+                        1 => "Asst ",
+                        _ => &format!("L{:<3} ", visual_branch - 2),
+                    }
+                }
+            };
+
             let mut row_spans = vec![
                 Span::styled(
-                    format!("L{:<4}", branch),
+                    format!("{:<5}", row_label),
                     Style::default().fg(Color::DarkGray)
                 )
             ];
 
             for (pos, &idx) in window_indices.iter().enumerate() {
                 let node = &state.graph.nodes[idx];
+                let node_visual_branch = get_visual_branch(node, state.zoom.level);
                 let is_cursor = (start + pos) == state.cursor_index;
 
-                if node.branch_level == branch {
+                if node_visual_branch == visual_branch {
                     let (symbol, _label, color) = get_compact_node_info(node);
 
                     let mut style = Style::default().fg(color);
@@ -170,6 +189,7 @@ fn render_timeline(f: &mut Frame, area: Rect, state: &AppState) {
                     row_spans.push(Span::styled(symbol, style));
                     row_spans.push(Span::styled("──", Style::default().fg(Color::DarkGray)));
                 } else {
+                    // Empty space - maintain alignment
                     row_spans.push(Span::raw("   "));
                 }
             }

@@ -52,11 +52,12 @@ impl ZoomState {
     }
 }
 
-// Filter nodes based on zoom level
+// Filter nodes based on zoom level - but DON'T filter for CONVERSATIONS anymore!
+// The filtering now happens in the DISPLAY layer by branch assignment
 pub fn filter_by_zoom(nodes: &[Node], level: ZoomLevel) -> Vec<usize> {
     match level {
         ZoomLevel::Sessions => {
-            // Show only first and last nodes as session markers
+            // Show only first and last nodes as session markers (for future multi-session view)
             if nodes.is_empty() {
                 vec![]
             } else {
@@ -64,7 +65,7 @@ pub fn filter_by_zoom(nodes: &[Node], level: ZoomLevel) -> Vec<usize> {
             }
         }
         ZoomLevel::Conversations => {
-            // Show only User and Assistant messages (major conversation beats)
+            // Show ALL User and Assistant messages - full conversation flow
             nodes.iter()
                 .enumerate()
                 .filter(|(_, n)| {
@@ -75,10 +76,40 @@ pub fn filter_by_zoom(nodes: &[Node], level: ZoomLevel) -> Vec<usize> {
                 .map(|(i, _)| i)
                 .collect()
         }
-        ZoomLevel::Details | ZoomLevel::Focus => {
-            // Show everything
+        ZoomLevel::Details => {
+            // Show everything - tools, agents, results
             (0..nodes.len()).collect()
         }
+        ZoomLevel::Focus => {
+            // Focus mode shows everything but will expand one node inline
+            (0..nodes.len()).collect()
+        }
+    }
+}
+
+// NEW: Assign visual branch for rendering based on node type and zoom level
+pub fn get_visual_branch(node: &Node, zoom_level: ZoomLevel) -> usize {
+    match zoom_level {
+        ZoomLevel::Conversations => {
+            // Separate User from Assistant for clear causality
+            match &node.node_type {
+                crate::types::NodeType::UserMessage(_) => 0,
+                crate::types::NodeType::AssistantMessage(_) => 1,
+                _ => 2, // Shouldn't appear in CONVERSATIONS mode
+            }
+        }
+        ZoomLevel::Details | ZoomLevel::Focus => {
+            // Use actual branch level, but offset User/Asst
+            match &node.node_type {
+                crate::types::NodeType::UserMessage(_) => 0,
+                crate::types::NodeType::AssistantMessage(_) => 1,
+                _ => {
+                    // Tools and agents appear below their branch level + 2
+                    2 + node.branch_level as usize
+                }
+            }
+        }
+        ZoomLevel::Sessions => 0,
     }
 }
 
