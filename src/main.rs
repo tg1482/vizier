@@ -163,6 +163,12 @@ fn run_tui(
                 match key.code {
                     KeyCode::Char('q') => break,
                     KeyCode::Char('s') => state.toggle_session_list(),
+                    KeyCode::Char('t') | KeyCode::Char('T') => {
+                        state.timeline_open = !state.timeline_open;
+                    }
+                    KeyCode::Char('d') | KeyCode::Char('D') => {
+                        state.details_open = !state.details_open;
+                    }
                     KeyCode::Char('z') => state.toggle_focus(),
                     KeyCode::Char('h') | KeyCode::Left => {
                         if state.session_list_open {
@@ -210,6 +216,7 @@ fn run_tui(
                                 }
                             }
                             state.session_list_open = false;
+                            state.timeline_open = true; // Show timeline after switching
                         }
                     }
                     KeyCode::Char('g') => state.cursor_in_level = 0,

@@ -19,6 +19,8 @@ pub struct AppState {
     pub available_sessions: Vec<SessionInfo>, // All sessions in this project
     pub session_list_open: bool,  // Whether session picker is showing
     pub session_list_cursor: usize, // Cursor in session list
+    pub timeline_open: bool,      // Whether timeline is showing
+    pub details_open: bool,       // Whether details panel is showing
 }
 
 #[derive(Debug, Clone)]
@@ -26,6 +28,7 @@ pub struct SessionInfo {
     pub id: String,
     pub timestamp: chrono::DateTime<chrono::Utc>,
     pub node_count: usize,
+    pub waiting_for_user: bool, // True if last event is Assistant message
 }
 
 impl AppState {
@@ -75,6 +78,8 @@ impl AppState {
             available_sessions,
             session_list_open: false,
             session_list_cursor: 0,
+            timeline_open: true,      // Start with timeline visible
+            details_open: false,      // Start with details hidden
         }
     }
 
@@ -237,28 +242,46 @@ impl AppState {
 }
 
 pub fn render(f: &mut Frame, state: &AppState) {
-    // In FOCUS mode, give more space to timeline, less to details
-    let constraints = if state.zoom.level == crate::zoom::ZoomLevel::Focus {
-        [Constraint::Min(20), Constraint::Length(8)]
-    } else {
-        [Constraint::Min(10), Constraint::Min(20)]
-    };
+    // Build layout based on what panels are open
+    let mut constraints = Vec::new();
+    let mut panels = Vec::new();
+
+    if state.session_list_open {
+        constraints.push(Constraint::Min(10));
+        panels.push("sessions");
+    }
+
+    if state.timeline_open {
+        constraints.push(Constraint::Min(10));
+        panels.push("timeline");
+    }
+
+    if state.details_open {
+        constraints.push(Constraint::Min(15));
+        panels.push("details");
+    }
+
+    // If nothing is open, default to timeline
+    if constraints.is_empty() {
+        constraints.push(Constraint::Min(10));
+        panels.push("timeline");
+    }
 
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(constraints)
         .split(f.area());
 
-    render_timeline(f, chunks[0], state);
-
-    // Only show details panel if not in FOCUS mode
-    if state.zoom.level != crate::zoom::ZoomLevel::Focus {
-        render_details(f, chunks[1], state);
-    }
-
-    // Render session list overlay if open
-    if state.session_list_open {
-        render_session_list(f, f.area(), state);
+    // Render each panel
+    let mut chunk_idx = 0;
+    for panel in panels {
+        match panel {
+            "sessions" => render_session_list(f, chunks[chunk_idx], state),
+            "timeline" => render_timeline(f, chunks[chunk_idx], state),
+            "details" => render_details(f, chunks[chunk_idx], state),
+            _ => {}
+        }
+        chunk_idx += 1;
     }
 }
 
@@ -274,7 +297,7 @@ fn render_timeline(f: &mut Frame, area: Rect, state: &AppState) {
         ),
         Span::styled("● LIVE ", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
         Span::styled(
-            "h/l:navigate  j/k:level  z:focus  g/G:start/end  s:sessions  q:quit",
+            "h/l:nav j/k:level t:timeline d:details s:sessions q:quit",
             Style::default().fg(Color::DarkGray)
         )
     ]));
@@ -814,28 +837,7 @@ fn render_node_box(node: &Node) -> Vec<Line> {
 
 
 fn render_session_list(f: &mut Frame, area: Rect, state: &AppState) {
-    use ratatui::layout::Alignment;
-
-    // Center a box for session selection
-    let width = area.width.min(80);
-    let height = area.height.min(20);
-    let x = (area.width.saturating_sub(width)) / 2;
-    let y = (area.height.saturating_sub(height)) / 2;
-
-    let popup_area = Rect {
-        x: area.x + x,
-        y: area.y + y,
-        width,
-        height,
-    };
-
-    let mut lines = vec![
-        Line::from(Span::styled(
-            "Select Session (Enter to switch, s to close)",
-            Style::default().add_modifier(Modifier::BOLD)
-        )),
-        Line::from(""),
-    ];
+    let mut lines = vec![];
 
     for (idx, session) in state.available_sessions.iter().enumerate() {
         let is_current = session.id == state.session_id;
@@ -844,7 +846,10 @@ fn render_session_list(f: &mut Frame, area: Rect, state: &AppState) {
         let prefix = if is_selected { "> " } else { "  " };
         let current_marker = if is_current { " (current)" } else { "" };
 
-        let time_str = session.timestamp.format("%Y-%m-%d %H:%M").to_string();
+        // Check if session is waiting (last event is Assistant message)
+        let waiting_marker = if session.waiting_for_user { " ⏸" } else { "" };
+
+        let time_str = session.timestamp.format("%m-%d %H:%M").to_string();
         let short_id = if session.id.len() > 8 {
             &session.id[..8]
         } else {
@@ -852,16 +857,18 @@ fn render_session_list(f: &mut Frame, area: Rect, state: &AppState) {
         };
 
         let text = format!(
-            "{}{} | {} | {} events{}",
-            prefix, short_id, time_str, session.node_count, current_marker
+            "{}{} | {} | {:4} events{}{}",
+            prefix, short_id, time_str, session.node_count, current_marker, waiting_marker
         );
 
         let mut style = Style::default();
-        if is_current {
+        if session.waiting_for_user {
+            style = style.fg(Color::Yellow); // Highlight waiting sessions
+        } else if is_current {
             style = style.fg(Color::Green);
         }
         if is_selected {
-            style = style.add_modifier(Modifier::BOLD).fg(Color::Cyan);
+            style = style.add_modifier(Modifier::BOLD);
         }
 
         lines.push(Line::from(Span::styled(text, style)));
@@ -872,9 +879,9 @@ fn render_session_list(f: &mut Frame, area: Rect, state: &AppState) {
             Block::default()
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::Cyan))
-                .title(" Sessions ")
+                .title(" Sessions (Enter to switch, s to close) ")
         )
         .wrap(Wrap { trim: true });
 
-    f.render_widget(paragraph, popup_area);
+    f.render_widget(paragraph, area);
 }

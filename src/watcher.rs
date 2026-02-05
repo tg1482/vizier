@@ -173,15 +173,28 @@ impl SessionWatcher {
                             if let Ok(modified) = metadata.modified() {
                                 let timestamp: chrono::DateTime<chrono::Utc> = modified.into();
 
-                                // Count lines as rough node count
-                                let node_count = std::fs::read_to_string(&path)
-                                    .map(|s| s.lines().count())
-                                    .unwrap_or(0);
+                                // Read file to count lines and check last event
+                                let (node_count, waiting_for_user) = if let Ok(content) = std::fs::read_to_string(&path) {
+                                    let lines: Vec<_> = content.lines().collect();
+                                    let count = lines.len();
+
+                                    // Check if last line is an Assistant message (waiting for user)
+                                    let waiting = lines.last()
+                                        .and_then(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+                                        .and_then(|v| v.get("type").and_then(|t| t.as_str()).map(|s| s.to_string()))
+                                        .map(|event_type| event_type == "assistant")
+                                        .unwrap_or(false);
+
+                                    (count, waiting)
+                                } else {
+                                    (0, false)
+                                };
 
                                 sessions.push(crate::ui::SessionInfo {
                                     id: session_id.to_string(),
                                     timestamp,
                                     node_count,
+                                    waiting_for_user,
                                 });
                             }
                         }
