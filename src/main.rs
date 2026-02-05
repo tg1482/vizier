@@ -110,18 +110,15 @@ fn run_tui(graph: types::Graph) -> Result<()> {
             if let Event::Key(key) = event::read()? {
                 match key.code {
                     KeyCode::Char('q') => break,
-                    KeyCode::Char('z') => state.zoom_in(),
-                    KeyCode::Char('x') => state.zoom_out(),
+                    KeyCode::Char('z') => state.toggle_focus(),
                     KeyCode::Char('h') | KeyCode::Left => state.move_left(),
                     KeyCode::Char('l') | KeyCode::Right => state.move_right(),
-                    KeyCode::Char('j') | KeyCode::Down => state.move_right(),  // Alternative
-                    KeyCode::Char('k') | KeyCode::Up => state.move_left(),     // Alternative
-                    KeyCode::Char('g') => state.cursor_index = 0,
+                    KeyCode::Char('j') | KeyCode::Down => state.level_down(),
+                    KeyCode::Char('k') | KeyCode::Up => state.level_up(),
+                    KeyCode::Char('g') => state.cursor_in_level = 0,
                     KeyCode::Char('G') => {
-                        let visible = crate::zoom::filter_by_zoom(&state.graph.nodes, state.zoom.level);
-                        if !visible.is_empty() {
-                            state.cursor_index = visible.len() - 1;
-                        }
+                        let max_pos = state.get_nodes_in_current_level().saturating_sub(1);
+                        state.cursor_in_level = max_pos;
                     }
                     _ => {}
                 }

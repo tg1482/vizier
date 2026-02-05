@@ -37,7 +37,7 @@ pub struct ZoomState {
 impl ZoomState {
     pub fn new() -> Self {
         Self {
-            level: ZoomLevel::Conversations,
+            level: ZoomLevel::Details,  // Start at DETAILS so you can see tools/agents
             selected_session: 0,
             selected_turn: 0,
         }

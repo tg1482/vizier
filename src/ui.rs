@@ -10,59 +10,110 @@ use ratatui::{
 
 pub struct AppState {
     pub graph: Graph,
-    pub cursor_index: usize,  // Index in the FILTERED list (zoom-dependent)
+    pub current_level: usize,     // Which row we're on (0=User, 1=Asst, 2+=Tools/Agents)
+    pub cursor_in_level: usize,   // Position within that level
     pub zoom: ZoomState,
+    pub focused_node: Option<usize>, // Which node is zoomed/expanded (if any)
 }
 
 impl AppState {
     pub fn new(graph: Graph) -> Self {
+        // Find the last User message as starting point
+        let last_user_idx = graph.nodes.iter()
+            .rposition(|n| matches!(n.node_type, NodeType::UserMessage(_)))
+            .unwrap_or(0);
+
+        // Count how many user messages come before this
+        let cursor_in_level = graph.nodes.iter()
+            .take(last_user_idx + 1)
+            .filter(|n| matches!(n.node_type, NodeType::UserMessage(_)))
+            .count()
+            .saturating_sub(1);
+
         Self {
             graph,
-            cursor_index: 0,
+            current_level: 0,  // Start on User row
+            cursor_in_level,
             zoom: ZoomState::new(),
+            focused_node: None,
         }
     }
 
-    pub fn zoom_in(&mut self) {
-        let old_level = self.zoom.level;
-        self.zoom.zoom_in();
-        // When zooming in, try to stay on the same actual node
-        if self.zoom.level != old_level {
-            self.cursor_index = 0; // Reset to start for simplicity
+    // Toggle focus/zoom on current node
+    pub fn toggle_focus(&mut self) {
+        if let Some(node_idx) = self.get_current_node_index() {
+            if self.focused_node == Some(node_idx) {
+                self.focused_node = None;
+            } else {
+                self.focused_node = Some(node_idx);
+            }
         }
     }
 
-    pub fn zoom_out(&mut self) {
-        let old_level = self.zoom.level;
-        self.zoom.zoom_out();
-        if self.zoom.level != old_level {
-            self.cursor_index = 0;
+    // Move to next level down (User → Asst → Tools → etc.)
+    pub fn level_down(&mut self) {
+        let max_level = self.get_max_level();
+        if self.current_level < max_level {
+            self.current_level += 1;
+            self.cursor_in_level = 0; // Reset position in new level
         }
     }
 
-    // Move right in the timeline (next node in filtered view)
+    // Move to previous level up
+    pub fn level_up(&mut self) {
+        if self.current_level > 0 {
+            self.current_level -= 1;
+            self.cursor_in_level = 0;
+        }
+    }
+
+    // Move right within current level
     pub fn move_right(&mut self) {
-        let visible = filter_by_zoom(&self.graph.nodes, self.zoom.level);
-        if self.cursor_index < visible.len().saturating_sub(1) {
-            self.cursor_index += 1;
+        let nodes_in_level = self.get_nodes_in_current_level();
+        if self.cursor_in_level < nodes_in_level.saturating_sub(1) {
+            self.cursor_in_level += 1;
         }
     }
 
-    // Move left in the timeline (previous node in filtered view)
+    // Move left within current level
     pub fn move_left(&mut self) {
-        if self.cursor_index > 0 {
-            self.cursor_index -= 1;
+        if self.cursor_in_level > 0 {
+            self.cursor_in_level -= 1;
         }
     }
 
-    // Get the actual node index in the full graph
-    pub fn get_actual_index(&self) -> usize {
-        let visible = filter_by_zoom(&self.graph.nodes, self.zoom.level);
-        *visible.get(self.cursor_index).unwrap_or(&0)
+    // Get nodes that belong to the current level
+    pub fn get_nodes_in_current_level(&self) -> usize {
+        self.graph.nodes.iter()
+            .filter(|n| {
+                let visual_branch = get_visual_branch(n, self.zoom.level);
+                visual_branch == self.current_level
+            })
+            .count()
+    }
+
+    // Get the actual node index in the graph for current cursor position
+    pub fn get_current_node_index(&self) -> Option<usize> {
+        self.graph.nodes.iter()
+            .enumerate()
+            .filter(|(_, n)| {
+                let visual_branch = get_visual_branch(n, self.zoom.level);
+                visual_branch == self.current_level
+            })
+            .nth(self.cursor_in_level)
+            .map(|(idx, _)| idx)
     }
 
     pub fn selected_node(&self) -> Option<&Node> {
-        self.graph.nodes.get(self.get_actual_index())
+        self.get_current_node_index()
+            .and_then(|idx| self.graph.nodes.get(idx))
+    }
+
+    fn get_max_level(&self) -> usize {
+        self.graph.nodes.iter()
+            .map(|n| get_visual_branch(n, self.zoom.level))
+            .max()
+            .unwrap_or(1)
     }
 
 }
@@ -99,7 +150,7 @@ fn render_timeline(f: &mut Frame, area: Rect, state: &AppState) {
             Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)
         ),
         Span::styled(
-            "z/x:zoom  h/l:move  g/G:start/end  q:quit",
+            "h/l:navigate-level  j/k:change-level  z:focus  g/G:start/end  q:quit",
             Style::default().fg(Color::DarkGray)
         )
     ]));
@@ -111,17 +162,30 @@ fn render_timeline(f: &mut Frame, area: Rect, state: &AppState) {
     if visible_indices.is_empty() {
         lines.push(Line::from("No nodes at this zoom level"));
     } else {
+        // Get nodes in current level for centering
+        let current_level_nodes: Vec<usize> = visible_indices.iter()
+            .enumerate()
+            .filter(|(_, &idx)| {
+                let node = &state.graph.nodes[idx];
+                get_visual_branch(node, state.zoom.level) == state.current_level
+            })
+            .map(|(i, _)| i)
+            .collect();
+
+        // Find the actual position of cursor in the full timeline
+        let cursor_global_pos = current_level_nodes.get(state.cursor_in_level).copied().unwrap_or(0);
+
         // CAMERA-CENTRIC: Center the view on the cursor
         let nodes_per_screen = ((area.width as usize).saturating_sub(10)) / 4;
         let half_screen = nodes_per_screen / 2;
 
         // Calculate window so cursor is centered
-        let start = if state.cursor_index < half_screen {
+        let start = if cursor_global_pos < half_screen {
             0
-        } else if state.cursor_index + half_screen >= visible_indices.len() {
+        } else if cursor_global_pos + half_screen >= visible_indices.len() {
             visible_indices.len().saturating_sub(nodes_per_screen)
         } else {
-            state.cursor_index.saturating_sub(half_screen)
+            cursor_global_pos.saturating_sub(half_screen)
         };
 
         let end = (start + nodes_per_screen).min(visible_indices.len());
@@ -166,20 +230,33 @@ fn render_timeline(f: &mut Frame, area: Rect, state: &AppState) {
                 }
             };
 
+            // Highlight current level's label
+            let label_style = if visual_branch == state.current_level {
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::DarkGray)
+            };
+
             let mut row_spans = vec![
                 Span::styled(
                     format!("{:<5}", row_label),
-                    Style::default().fg(Color::DarkGray)
+                    label_style
                 )
             ];
+
+            // Track position within this visual branch for cursor detection
+            let mut pos_in_branch = 0;
 
             for (pos, &idx) in window_indices.iter().enumerate() {
                 let node = &state.graph.nodes[idx];
                 let node_visual_branch = get_visual_branch(node, state.zoom.level);
-                let is_cursor = (start + pos) == state.cursor_index;
 
                 if node_visual_branch == visual_branch {
                     let (symbol, _label, color) = get_compact_node_info(node);
+
+                    // Check if this is the cursor (on current level at current position)
+                    let is_cursor = visual_branch == state.current_level
+                        && (start + pos) == cursor_global_pos;
 
                     let mut style = Style::default().fg(color);
                     if is_cursor {
@@ -188,6 +265,7 @@ fn render_timeline(f: &mut Frame, area: Rect, state: &AppState) {
 
                     row_spans.push(Span::styled(symbol, style));
                     row_spans.push(Span::styled("──", Style::default().fg(Color::DarkGray)));
+                    pos_in_branch += 1;
                 } else {
                     // Empty space - maintain alignment
                     row_spans.push(Span::raw("   "));
@@ -214,9 +292,9 @@ fn render_timeline(f: &mut Frame, area: Rect, state: &AppState) {
             lines.push(Line::from(label_spans));
         }
 
-        // FOCUS mode: Show expanded view of selected node inline
-        if state.zoom.level == crate::zoom::ZoomLevel::Focus {
-            if let Some(selected_node) = state.selected_node() {
+        // FOCUS: Show expanded view if a node is focused
+        if let Some(focused_idx) = state.focused_node {
+            if let Some(selected_node) = state.graph.nodes.get(focused_idx) {
                 lines.push(Line::from(""));
                 lines.push(Line::from(""));
 
@@ -229,13 +307,20 @@ fn render_timeline(f: &mut Frame, area: Rect, state: &AppState) {
         }
 
         lines.push(Line::from(""));
+
+        let level_name = match state.current_level {
+            0 => "User",
+            1 => "Asst",
+            _ => "Tools",
+        };
+
         lines.push(Line::from(vec![
             Span::styled(
-                format!("{} nodes | Cursor: {} | Showing {}-{} ",
-                    visible_indices.len(),
-                    state.cursor_index + 1,
-                    start + 1,
-                    end
+                format!("Level: {} | Position: {}/{} | Total: {} nodes ",
+                    level_name,
+                    state.cursor_in_level + 1,
+                    state.get_nodes_in_current_level(),
+                    visible_indices.len()
                 ),
                 Style::default().fg(Color::DarkGray)
             )
@@ -255,8 +340,15 @@ fn render_details(f: &mut Frame, area: Rect, state: &AppState) {
         vec![Line::from("No node selected")]
     };
 
-    let visible = filter_by_zoom(&state.graph.nodes, state.zoom.level);
-    let title = format!(" Node {}/{} ", state.cursor_index + 1, visible.len());
+    let title = format!(" {} {}/{} ",
+        match state.current_level {
+            0 => "User",
+            1 => "Asst",
+            _ => "Tool",
+        },
+        state.cursor_in_level + 1,
+        state.get_nodes_in_current_level()
+    );
 
     let paragraph = Paragraph::new(content)
         .block(
