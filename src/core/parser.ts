@@ -46,6 +46,8 @@ export function parseEventToNodes(event: SessionEvent): Node[] {
     if (role === "assistant") {
       const text = extractTextContent(content)
       const hasTextNode = text.length > 0
+      const model = event.message?.model
+      const usage = event.message?.usage
 
       if (hasTextNode) {
         nodes.push({
@@ -55,6 +57,8 @@ export function parseEventToNodes(event: SessionEvent): Node[] {
           timestamp: ts,
           branchLevel,
           agentId: event.agentId,
+          model,
+          usage,
         })
       }
 
@@ -69,6 +73,8 @@ export function parseEventToNodes(event: SessionEvent): Node[] {
             timestamp: ts,
             branchLevel,
             agentId: event.agentId,
+            model,
+            usage,
           })
         }
       }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react"
+import React, { useState, useEffect, useCallback, useRef } from "react"
 import { Box, useInput, useStdout, useApp } from "ink"
 import type { Graph, SessionInfo } from "./core/types"
 import type { ZoomLevel } from "./core/zoom"
@@ -68,6 +68,18 @@ function findNearestInLevel(graph: Graph, level: number, zoom: ZoomLevel, target
 
 const DETAILS_HEIGHT = 20
 
+// Find the last node's visual branch and position within that branch
+function getLatestNodePosition(graph: Graph, zoom: ZoomLevel): { level: number; pos: number } {
+  if (graph.nodes.length === 0) return { level: 0, pos: 0 }
+  const lastNode = graph.nodes[graph.nodes.length - 1]
+  const level = getVisualBranch(lastNode, zoom)
+  let pos = 0
+  for (const n of graph.nodes) {
+    if (getVisualBranch(n, zoom) === level) pos++
+  }
+  return { level, pos: Math.max(0, pos - 1) }
+}
+
 export function App({ initialGraph, sessionId: initialSessionId, claudeDir, project }: Props) {
   const { stdout } = useStdout()
   const { exit } = useApp()
@@ -100,6 +112,8 @@ export function App({ initialGraph, sessionId: initialSessionId, claudeDir, proj
   const [sessions, setSessions] = useState<SessionInfo[]>(() => listSessions(claudeDir, project))
 
   const [detailsScroll, setDetailsScroll] = useState(0)
+  const [follow, setFollow] = useState(false)
+  const followRef = useRef(false)
   const [mode, setMode] = useState<Mode>("normal")
 
   // Blink timer
@@ -116,12 +130,17 @@ export function App({ initialGraph, sessionId: initialSessionId, claudeDir, proj
       const events = readAllEvents(sessionFile, agentFiles)
       const newGraph = buildGraph(events)
       setGraph(prev => {
-        // Smart cursor tracking: if at end, follow new content
-        const oldCount = prev.nodes.filter(n => getVisualBranch(n, zoom) === currentLevel).length
-        const newCount = newGraph.nodes.filter(n => getVisualBranch(n, zoom) === currentLevel).length
-        const isAtEnd = cursorInLevel >= oldCount - 2
-        if (isAtEnd && newCount > oldCount) {
-          setCursorInLevel(Math.max(0, newCount - 1))
+        if (followRef.current) {
+          const latest = getLatestNodePosition(newGraph, zoom)
+          setCurrentLevel(latest.level)
+          setCursorInLevel(latest.pos)
+        } else {
+          const oldCount = prev.nodes.filter(n => getVisualBranch(n, zoom) === currentLevel).length
+          const newCount = newGraph.nodes.filter(n => getVisualBranch(n, zoom) === currentLevel).length
+          const isAtEnd = cursorInLevel >= oldCount - 2
+          if (isAtEnd && newCount > oldCount) {
+            setCursorInLevel(Math.max(0, newCount - 1))
+          }
         }
         return newGraph
       })
@@ -184,6 +203,20 @@ export function App({ initialGraph, sessionId: initialSessionId, claudeDir, proj
       return
     }
 
+    if (input === "f") {
+      setFollow(prev => {
+        const next = !prev
+        followRef.current = next
+        if (next) {
+          const latest = getLatestNodePosition(graph, zoom)
+          setCurrentLevel(latest.level)
+          setCursorInLevel(latest.pos)
+        }
+        return next
+      })
+      return
+    }
+
     if (input === "i") {
       setMode("input")
       return
@@ -220,16 +253,19 @@ export function App({ initialGraph, sessionId: initialSessionId, claudeDir, proj
       return
     }
 
-    // Timeline navigation
+    // Timeline navigation — any manual nav disables follow
     if (input === "h" || key.leftArrow) {
+      setFollow(false); followRef.current = false
       setCursorInLevel(prev => Math.max(prev - 1, 0))
       return
     }
     if (input === "l" || key.rightArrow) {
+      setFollow(false); followRef.current = false
       setCursorInLevel(prev => Math.min(prev + 1, nodesInLevel - 1))
       return
     }
     if (input === "j" || key.downArrow) {
+      setFollow(false); followRef.current = false
       const maxLevel = getMaxLevel(graph, zoom)
       if (currentLevel < maxLevel) {
         const ts = currentNode?.timestamp
@@ -240,6 +276,7 @@ export function App({ initialGraph, sessionId: initialSessionId, claudeDir, proj
       return
     }
     if (input === "k" || key.upArrow) {
+      setFollow(false); followRef.current = false
       if (currentLevel > 0) {
         const ts = currentNode?.timestamp
         setCurrentLevel(prev => prev - 1)
@@ -249,10 +286,12 @@ export function App({ initialGraph, sessionId: initialSessionId, claudeDir, proj
       return
     }
     if (input === "g") {
+      setFollow(false); followRef.current = false
       setCursorInLevel(0)
       return
     }
     if (input === "G") {
+      setFollow(false); followRef.current = false
       setCursorInLevel(Math.max(0, nodesInLevel - 1))
       return
     }
@@ -307,6 +346,8 @@ export function App({ initialGraph, sessionId: initialSessionId, claudeDir, proj
         totalNodes={graph.nodes.length}
         zoom={zoom}
         isLive={true}
+        follow={follow}
+        stats={graph.stats}
       />
     </Box>
   )

@@ -224,7 +224,7 @@ export function Timeline({ graph, currentLevel, cursorInLevel, zoom, blinkState,
       <Text>
         <Text color="magenta" bold>[{getZoomLabel(zoom)}] </Text>
         <Text color="green" bold>{"\u25CF"} LIVE </Text>
-        <Text dimColor>h/l:nav j/k:level t:timeline d:details s:sessions z:focus i:input q:quit</Text>
+        <Text dimColor>h/l:nav j/k:level t:timeline d:details s:sessions z:focus f:follow i:input q:quit</Text>
       </Text>
       <Text>{" "}</Text>
       <Text>

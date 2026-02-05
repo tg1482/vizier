@@ -20,6 +20,14 @@ function nodeToLines(node: Node): ContentLine[] {
   lines.push({ text: `ID: ${node.id}`, dimColor: true })
   lines.push({ text: `Time: ${time}`, dimColor: true })
   lines.push({ text: `Branch Level: ${node.branchLevel}`, dimColor: true })
+  if (node.model) lines.push({ text: `Model: ${node.model}`, dimColor: true })
+  if (node.usage) {
+    const u = node.usage
+    const parts = [`in:${u.input_tokens ?? 0}`, `out:${u.output_tokens ?? 0}`]
+    if (u.cache_read_input_tokens) parts.push(`cache_read:${u.cache_read_input_tokens}`)
+    if (u.cache_creation_input_tokens) parts.push(`cache_create:${u.cache_creation_input_tokens}`)
+    lines.push({ text: `Tokens: ${parts.join(" ")}`, dimColor: true })
+  }
   lines.push({ text: "" })
 
   switch (node.nodeType.kind) {

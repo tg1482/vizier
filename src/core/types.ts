@@ -21,6 +21,7 @@ export type Usage = {
   input_tokens?: number
   output_tokens?: number
   cache_read_input_tokens?: number
+  cache_creation_input_tokens?: number
 }
 
 // Parsed node types — discriminated union
@@ -40,6 +41,8 @@ export type Node = {
   timestamp: number // epoch ms for fast comparison
   branchLevel: number
   agentId?: string
+  model?: string
+  usage?: Usage
 }
 
 export type Edge = {
@@ -48,9 +51,18 @@ export type Edge = {
   isBranch: boolean
 }
 
+export type SessionStats = {
+  totalInputTokens: number
+  totalOutputTokens: number
+  totalCacheRead: number
+  totalCacheCreation: number
+  model: string | null
+}
+
 export type Graph = {
   nodes: Node[]
   edges: Edge[]
+  stats: SessionStats
 }
 
 export type SessionInfo = {
