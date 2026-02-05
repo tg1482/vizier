@@ -1,14 +1,15 @@
 import React from "react"
 import { Box, Text } from "ink"
 import type { Node, Graph } from "../core/types"
-import type { ZoomLevel } from "../core/zoom"
-import { filterByZoom, getVisualBranch, getZoomLabel } from "../core/zoom"
+import type { ZoomLevel, CellMode } from "../core/zoom"
+import { filterByZoom, getVisualBranch, getZoomLabel, getNodePreview, findStickyNode } from "../core/zoom"
 
 type Props = {
   graph: Graph
   currentLevel: number
   cursorInLevel: number
   zoom: ZoomLevel
+  cellMode: CellMode
   blinkState: boolean
   termWidth: number
 }
@@ -60,10 +61,29 @@ const ROW_LABELS: Record<number, string> = {
   5: "Tool\u2074",
 }
 
-// Column width for each node slot — matches Rust's 3-char cells (──X)
-const COL_W = 3
+// Column widths per cell mode
+// Symbol: "──X" = 3 chars
+// Preview: "──X preview text    " = 22 chars (same ── prefix, symbol, then padded text)
+const COL_W_SYMBOL = 3
+const COL_W_PREVIEW = 22
+const PREVIEW_TEXT_W = COL_W_PREVIEW - 3  // 19 chars after "──X" for " preview text"
 
-export function Timeline({ graph, currentLevel, cursorInLevel, zoom, blinkState, termWidth }: Props) {
+// Sticky column widths per mode
+const STICKY_W_SYMBOL = 2           // "●│"
+const STICKY_W_PREVIEW = COL_W_PREVIEW  // full width
+
+function getColW(mode: CellMode): number {
+  return mode === "preview" ? COL_W_PREVIEW : COL_W_SYMBOL
+}
+
+function getStickyW(mode: CellMode): number {
+  return mode === "preview" ? STICKY_W_PREVIEW : STICKY_W_SYMBOL
+}
+
+export function Timeline({ graph, currentLevel, cursorInLevel, zoom, cellMode, blinkState, termWidth }: Props) {
+  const isPreview = cellMode === "preview"
+  const colW = getColW(cellMode)
+  const stickyW = getStickyW(cellMode)
   const visibleIndices = filterByZoom(graph.nodes, zoom)
   if (visibleIndices.length === 0) {
     return (
@@ -82,9 +102,10 @@ export function Timeline({ graph, currentLevel, cursorInLevel, zoom, blinkState,
   }
   const cursorGlobalPos = currentLevelPositions[cursorInLevel] ?? 0
 
-  // Camera-centric windowing
-  const labelW = 5 // "User " = 5 chars, matching Rust's {:<5}
-  const nodesPerScreen = Math.max(1, Math.floor((termWidth - labelW - 4) / COL_W))
+  // Camera-centric windowing — reserve space for sticky column
+  const labelW = 5
+  const availW = termWidth - labelW - 4 - stickyW
+  const nodesPerScreen = Math.max(1, Math.floor(availW / colW))
   const halfScreen = Math.floor(nodesPerScreen / 2)
 
   let start: number
@@ -107,8 +128,7 @@ export function Timeline({ graph, currentLevel, cursorInLevel, zoom, blinkState,
   }
   maxBranch = Math.min(maxBranch, 6)
 
-  // Pre-compute connectors: when the visual branch changes between consecutive
-  // nodes, place │ at the arriving column through all intermediate gap rows.
+  // Pre-compute connectors: │ at the start of the cell (position 0)
   const connectorGaps: Set<number>[] = Array.from({ length: maxBranch }, () => new Set())
   let prevBranch: number | null = null
   for (let col = 0; col < numCols; col++) {
@@ -124,30 +144,125 @@ export function Timeline({ graph, currentLevel, cursorInLevel, zoom, blinkState,
     prevBranch = branch
   }
 
-  // --- Build timestamp row as spans ---
+  // --- Sticky: for each branch, find the most recent node before the window ---
+  const stickyNodes: Map<number, number> = new Map()
+  for (let vb = 0; vb <= maxBranch; vb++) {
+    let hasVisibleNode = false
+    for (let col = 0; col < numCols; col++) {
+      if (getVisualBranch(graph.nodes[windowIndices[col]], zoom) === vb) {
+        hasVisibleNode = true
+        break
+      }
+    }
+    if (!hasVisibleNode) {
+      const sticky = findStickyNode(graph.nodes, visibleIndices, vb, start, zoom)
+      if (sticky !== null) stickyNodes.set(vb, sticky)
+    }
+  }
+  const hasAnyStickyNode = stickyNodes.size > 0
+
+  // --- Build timestamp row ---
   const timeSpans: React.ReactNode[] = []
   let lastShownTime: number | null = null
   let skipNext = 0
+  const timeInterval = isPreview ? 1 : 5
   for (let col = 0; col < numCols; col++) {
     if (skipNext > 0) {
       skipNext--
-      timeSpans.push(<Text key={`t${col}`}>{pad(COL_W)}</Text>)
+      timeSpans.push(<Text key={`t${col}`}>{pad(colW)}</Text>)
       continue
     }
     const node = graph.nodes[windowIndices[col]]
     const shouldShow = lastShownTime === null
-      || col % 5 === 0
+      || col % timeInterval === 0
       || (node.timestamp - lastShownTime) >= 60000
 
     if (shouldShow) {
       const t = formatTime(node.timestamp)
-      // time is 5 chars, padded to COL_W * 2 across two columns
-      timeSpans.push(<Text key={`t${col}`} dimColor>{t.padEnd(COL_W * 2)}</Text>)
-      lastShownTime = node.timestamp
-      skipNext = 1 // next col is consumed by this timestamp's width
+      if (isPreview) {
+        timeSpans.push(<Text key={`t${col}`} dimColor>{t.padEnd(colW)}</Text>)
+        lastShownTime = node.timestamp
+      } else {
+        timeSpans.push(<Text key={`t${col}`} dimColor>{t.padEnd(colW * 2)}</Text>)
+        lastShownTime = node.timestamp
+        skipNext = 1
+      }
     } else {
-      timeSpans.push(<Text key={`t${col}`}>{pad(COL_W)}</Text>)
+      timeSpans.push(<Text key={`t${col}`}>{pad(colW)}</Text>)
     }
+  }
+
+  // --- Render a node cell (both modes) ---
+  function renderNodeCell(
+    node: Node, idx: number, isCursor: boolean, key: string | number,
+  ): React.ReactNode {
+    const { symbol, color } = getNodeInfo(node)
+    const active = isNodeActive(graph, idx)
+    const displaySymbol = active ? (blinkState ? "\u25D0" : "\u25D1") : symbol
+
+    // Preview: "──● preview text    " — same ── prefix, then text fills remaining space
+    const previewTail = isPreview
+      ? (" " + getNodePreview(node, PREVIEW_TEXT_W - 1)).padEnd(PREVIEW_TEXT_W)
+      : ""
+
+    if (isCursor) {
+      return (
+        <Text key={key}>
+          <Text dimColor>{"──"}</Text>
+          <Text backgroundColor="white" color="black" bold>{displaySymbol}</Text>
+          {previewTail && <Text backgroundColor="white" color="black">{previewTail}</Text>}
+        </Text>
+      )
+    }
+    if (active) {
+      return (
+        <Text key={key}>
+          <Text dimColor>{"──"}</Text>
+          <Text color="yellow" bold>{displaySymbol}</Text>
+          {previewTail && <Text color="yellow">{previewTail}</Text>}
+        </Text>
+      )
+    }
+    return (
+      <Text key={key}>
+        <Text dimColor>{"──"}</Text>
+        <Text color={color}>{displaySymbol}</Text>
+        {previewTail && <Text dimColor>{previewTail}</Text>}
+      </Text>
+    )
+  }
+
+  // --- Render a sticky cell ---
+  function renderStickyCell(nodeIdx: number, key: string): React.ReactNode {
+    const node = graph.nodes[nodeIdx]
+    const { symbol, color } = getNodeInfo(node)
+
+    if (isPreview) {
+      const preview = getNodePreview(node, PREVIEW_TEXT_W - 1)
+      return (
+        <Text key={key}>
+          <Text color={color}>{symbol}</Text>
+          <Text dimColor>{" " + preview.padEnd(stickyW - 3)}</Text>
+          <Text dimColor>{"\u2502"}</Text>
+        </Text>
+      )
+    }
+    return (
+      <Text key={key}>
+        <Text color={color}>{symbol}</Text>
+        <Text dimColor>{"\u2502"}</Text>
+      </Text>
+    )
+  }
+
+  // --- Render sticky connector (between branch rows) ---
+  function renderStickyConnector(vb: number, key: string): React.ReactNode {
+    const hasSticky = stickyNodes.has(vb) || stickyNodes.has(vb + 1)
+    if (!hasSticky) return <Text key={key}>{pad(stickyW)}</Text>
+    if (isPreview) {
+      return <Text key={key} dimColor>{pad(stickyW - 1) + "\u2502"}</Text>
+    }
+    return <Text key={key} dimColor>{" \u2502"}</Text>
   }
 
   // --- Build branch rows ---
@@ -155,45 +270,29 @@ export function Timeline({ graph, currentLevel, cursorInLevel, zoom, blinkState,
   for (let vb = 0; vb <= maxBranch; vb++) {
     const label = ROW_LABELS[vb] ?? "Tool\u207A"
     const isCurrentRow = vb === currentLevel
+    const sticky = stickyNodes.get(vb)
 
-    // Build this row's cells as inline spans inside one <Text>
     const cellSpans: React.ReactNode[] = []
+
+    // Sticky column first
+    if (hasAnyStickyNode) {
+      if (sticky !== undefined) {
+        cellSpans.push(renderStickyCell(sticky, `sticky-${vb}`))
+      } else {
+        cellSpans.push(<Text key={`sticky-${vb}`}>{pad(stickyW)}</Text>)
+      }
+    }
+
     for (let col = 0; col < numCols; col++) {
       const idx = windowIndices[col]
       const node = graph.nodes[idx]
       const nodeBranch = getVisualBranch(node, zoom)
 
       if (nodeBranch === vb) {
-        const { symbol, color } = getNodeInfo(node)
         const isCursor = isCurrentRow && (start + col) === cursorGlobalPos
-        const active = isNodeActive(graph, idx)
-        const displaySymbol = active ? (blinkState ? "\u25D0" : "\u25D1") : symbol
-
-        // Each cell: "──X" = 3 chars (connector + symbol)
-        if (isCursor) {
-          cellSpans.push(
-            <Text key={col}>
-              <Text dimColor>{"──"}</Text>
-              <Text backgroundColor="white" color="black" bold>{displaySymbol}</Text>
-            </Text>
-          )
-        } else if (active) {
-          cellSpans.push(
-            <Text key={col}>
-              <Text dimColor>{"──"}</Text>
-              <Text color="yellow" bold>{displaySymbol}</Text>
-            </Text>
-          )
-        } else {
-          cellSpans.push(
-            <Text key={col}>
-              <Text dimColor>{"──"}</Text>
-              <Text color={color}>{displaySymbol}</Text>
-            </Text>
-          )
-        }
+        cellSpans.push(renderNodeCell(node, idx, isCursor, col))
       } else {
-        cellSpans.push(<Text key={col}>{pad(COL_W)}</Text>)
+        cellSpans.push(<Text key={col}>{pad(colW)}</Text>)
       }
     }
 
@@ -206,15 +305,17 @@ export function Timeline({ graph, currentLevel, cursorInLevel, zoom, blinkState,
       </Text>
     )
 
-    // Connector row between branch rows — always present to keep height stable
+    // Connector row
     if (vb < maxBranch) {
       const connSpans: React.ReactNode[] = []
+      if (hasAnyStickyNode) {
+        connSpans.push(renderStickyConnector(vb, `sconn-${vb}`))
+      }
       for (let col = 0; col < numCols; col++) {
         if (connectorGaps[vb].has(col)) {
-          // "│  " — connector at start of cell (3 chars), visually adjacent to prev symbol
-          connSpans.push(<Text key={col} dimColor>{"\u2502  "}</Text>)
+          connSpans.push(<Text key={col} dimColor>{"\u2502" + pad(colW - 1)}</Text>)
         } else {
-          connSpans.push(<Text key={col}>{pad(COL_W)}</Text>)
+          connSpans.push(<Text key={col}>{pad(colW)}</Text>)
         }
       }
       rows.push(
@@ -226,16 +327,20 @@ export function Timeline({ graph, currentLevel, cursorInLevel, zoom, blinkState,
     }
   }
 
+  const timeStickyPad = hasAnyStickyNode ? pad(stickyW) : ""
+
   return (
     <Box flexDirection="column" borderStyle="single" borderColor="cyan" paddingX={1}>
       <Text>
         <Text color="magenta" bold>[{getZoomLabel(zoom)}] </Text>
+        {isPreview && <Text color="blue" bold>[PREVIEW] </Text>}
         <Text color="green" bold>{"\u25CF"} LIVE </Text>
-        <Text dimColor>h/l:chrono shift+arrow:level j/k:row t:timeline d:details s:sessions f:follow q:quit</Text>
+        <Text dimColor>h/l:chrono shift+arrow:level j/k:row w:preview t:timeline d:details s:sessions f:follow q:quit</Text>
       </Text>
       <Text>{" "}</Text>
       <Text>
         {"Time".padEnd(labelW)}
+        {timeStickyPad}
         {timeSpans}
       </Text>
       <Text>{" "}</Text>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react"
 import { Box, useInput, useStdout, useApp } from "ink"
 import type { Graph, SessionInfo } from "./core/types"
-import type { ZoomLevel } from "./core/zoom"
+import type { ZoomLevel, CellMode } from "./core/zoom"
 import { getVisualBranch } from "./core/zoom"
 import { buildGraph } from "./core/graph"
 import {
@@ -119,6 +119,7 @@ export function App({ initialGraph, sessionId: initialSessionId, claudeDir, proj
     return lastUserPos
   })
   const [zoom, setZoom] = useState<ZoomLevel>("details")
+  const [cellMode, setCellMode] = useState<CellMode>("symbol")
   const [blinkState, setBlinkState] = useState(false)
   const [focusedNode, setFocusedNode] = useState<number | null>(null)
 
@@ -212,6 +213,7 @@ export function App({ initialGraph, sessionId: initialSessionId, claudeDir, proj
 
     if (input === "t") { setTimelineOpen(prev => !prev); return }
     if (input === "d") { setDetailsOpen(prev => !prev); return }
+    if (input === "w") { setCellMode(prev => prev === "symbol" ? "preview" : "symbol"); return }
 
     if (input === "z") {
       if (currentNodeIdx !== null) {
@@ -357,6 +359,7 @@ export function App({ initialGraph, sessionId: initialSessionId, claudeDir, proj
           currentLevel={currentLevel}
           cursorInLevel={cursorInLevel}
           zoom={zoom}
+          cellMode={cellMode}
           blinkState={blinkState}
           termWidth={termWidth}
         />

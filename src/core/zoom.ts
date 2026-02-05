@@ -1,6 +1,46 @@
 import type { Node } from "./types"
 
 export type ZoomLevel = "sessions" | "conversations" | "details" | "focus"
+export type CellMode = "symbol" | "preview"
+
+// Extract first N words from text, truncated to maxLen chars
+function firstWords(text: string, n: number, maxLen: number): string {
+  const words = text.trim().split(/\s+/).slice(0, n).join(" ")
+  return words.length <= maxLen ? words : words.slice(0, maxLen - 1) + "…"
+}
+
+// Short content preview for a node — pure function, no IO
+export function getNodePreview(node: Node, maxLen = 18): string {
+  switch (node.nodeType.kind) {
+    case "user": return firstWords(node.nodeType.text, 5, maxLen)
+    case "assistant": return firstWords(node.nodeType.text, 5, maxLen)
+    case "tool_call": return node.nodeType.name
+    case "tool_use": return node.nodeType.name
+    case "tool_result": return node.nodeType.isError ? "error" : "ok"
+    case "agent_start": return node.nodeType.agentType
+    case "agent_end": return "end"
+    case "progress": return firstWords(node.nodeType.text, 3, maxLen)
+  }
+}
+
+// For each branch row, find the most recent node at or before `beforeGlobalCol`
+// Returns the node index into graph.nodes, or null if none exists
+export function findStickyNode(
+  nodes: Node[],
+  visibleIndices: number[],
+  branch: number,
+  beforeGlobalCol: number,
+  zoom: ZoomLevel,
+): number | null {
+  let best: number | null = null
+  for (let i = 0; i < beforeGlobalCol && i < visibleIndices.length; i++) {
+    const idx = visibleIndices[i]
+    if (getVisualBranch(nodes[idx], zoom) === branch) {
+      best = idx
+    }
+  }
+  return best
+}
 
 export function zoomIn(level: ZoomLevel): ZoomLevel {
   switch (level) {
