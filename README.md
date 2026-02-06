@@ -89,6 +89,12 @@ make install
 
 This runs `bun link` to make the `vizier` command available globally.
 
+Or install from npm via Bun:
+
+```bash
+bun add -g vizier
+```
+
 ---
 
 If something looks off in your timeline, double‑check the project path or session ID.
