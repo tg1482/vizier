@@ -6,7 +6,7 @@ import { buildGraph } from "./core/graph"
 import {
   getClaudeDir,
   getProjectSlug,
-  getCurrentSessionId,
+  getLatestSessionId,
   getSessionFile,
   discoverAgentFiles,
   readAllEvents,
@@ -29,14 +29,10 @@ async function main() {
   const projectPath = args.project || process.cwd()
   const project = getProjectSlug(projectPath)
 
-  let sessionId = args.session || getCurrentSessionId()
+  let sessionId = args.session || getLatestSessionId(claudeDir, project)
   if (!sessionId) {
-    console.error("Could not determine current session.")
+    console.error(`No sessions found for project: ${projectPath}`)
     console.error("\nUsage: vizzy --session <session-id> --project <project-path>")
-    console.error("\nAvailable sessions:")
-    for (const s of listSessions(claudeDir, project).slice(0, 5)) {
-      console.error(`  - ${s.id}`)
-    }
     process.exit(1)
   }
 
@@ -52,8 +48,8 @@ async function main() {
 
   const graph = buildGraph(events)
 
-  // Clear screen before starting
-  process.stdout.write("\x1b[2J\x1b[H")
+  // Enter alternate screen buffer (like vim/less/htop)
+  process.stdout.write("\x1b[?1049h\x1b[H")
 
   const { waitUntilExit } = render(
     <App
@@ -66,8 +62,8 @@ async function main() {
   )
   await waitUntilExit()
 
-  // Clear screen on exit
-  process.stdout.write("\x1b[2J\x1b[H")
+  // Leave alternate screen buffer — restores previous terminal content
+  process.stdout.write("\x1b[?1049l")
 }
 
 main()

@@ -12,15 +12,9 @@ export function getProjectSlug(cwd: string): string {
   return cwd.replace(/\//g, "-")
 }
 
-export function getCurrentSessionId(): string | null {
-  const historyFile = join(getClaudeDir(), "history.jsonl")
-  if (!existsSync(historyFile)) return null
-  const content = readFileSync(historyFile, "utf-8")
-  const lines = content.trim().split("\n").filter(Boolean)
-  const lastLine = lines[lines.length - 1]
-  if (!lastLine) return null
-  const event = JSON.parse(lastLine)
-  return event.sessionId || null
+export function getLatestSessionId(claudeDir: string, project: string): string | null {
+  const sessions = listSessions(claudeDir, project)
+  return sessions.length > 0 ? sessions[0].id : null
 }
 
 function readJsonlFile(path: string): SessionEvent[] {

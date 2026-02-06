@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react"
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { Box, useInput, useStdout, useApp } from "ink"
 import type { Graph, SessionInfo } from "./core/types"
 import type { ZoomLevel, CellMode } from "./core/zoom"
@@ -134,11 +134,21 @@ export function App({ initialGraph, sessionId: initialSessionId, claudeDir, proj
   const followRef = useRef(false)
   const [mode, setMode] = useState<Mode>("normal")
 
-  // Blink timer
+  // Only blink when the session is still running (last node is a pending tool call)
+  const hasActiveNodes = useMemo(() => {
+    if (graph.nodes.length === 0) return false
+    const last = graph.nodes[graph.nodes.length - 1]
+    return last.nodeType.kind === "tool_call" && last.nodeType.output === null
+  }, [graph])
+
   useEffect(() => {
+    if (!hasActiveNodes) {
+      setBlinkState(false)
+      return
+    }
     const interval = setInterval(() => setBlinkState(b => !b), 500)
     return () => clearInterval(interval)
-  }, [])
+  }, [hasActiveNodes])
 
   // File watcher
   useEffect(() => {
@@ -167,14 +177,19 @@ export function App({ initialGraph, sessionId: initialSessionId, claudeDir, proj
     return () => { watcher.close() }
   }, [sessionId, claudeDir, project])
 
-  // Reset detail scroll when selected node changes
-  useEffect(() => { setDetailsScroll(0) }, [currentLevel, cursorInLevel])
-
   // Derived values
   const nodesInLevel = graph.nodes.filter(n => getVisualBranch(n, zoom) === currentLevel).length
   const currentNodeIdx = getNthNodeInLevel(graph, currentLevel, zoom, cursorInLevel)
   const currentNode = currentNodeIdx !== null ? graph.nodes[currentNodeIdx] : null
   const levelName = currentLevel === 0 ? "User" : currentLevel === 1 ? "Asst" : "Tools"
+
+  // Reset detail scroll when selected node changes — only if scrolled and details open
+  const prevNodeRef = useRef<string | null>(null)
+  const currentNodeId = currentNode?.id ?? null
+  if (currentNodeId !== prevNodeRef.current) {
+    prevNodeRef.current = currentNodeId
+    if (detailsOpen && detailsScroll !== 0) setDetailsScroll(0)
+  }
 
   // Switch session helper
   const switchSession = useCallback((newSessionId: string) => {
@@ -343,9 +358,11 @@ export function App({ initialGraph, sessionId: initialSessionId, claudeDir, proj
     setMode("normal")
   }, [])
 
-  // Fixed-height layout so Ink always redraws the same number of lines
+  // Use termHeight - 1 so Ink uses eraseLines (with output diff) instead of
+  // clearTerminal (full screen flash). Ink triggers clearTerminal when
+  // outputHeight >= stdout.rows, which causes visible flicker in iTerm.
   return (
-    <Box flexDirection="column" width={termWidth} height={termHeight}>
+    <Box flexDirection="column" width={termWidth} height={termHeight - 1}>
       {sessionListOpen && (
         <SessionList
           sessions={sessions}
