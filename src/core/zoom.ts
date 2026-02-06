@@ -66,7 +66,14 @@ export function filterByZoom(nodes: Node[], level: ZoomLevel): number[] {
       return nodes.length === 0 ? [] : [0, nodes.length - 1]
     case "conversations":
       return nodes
-        .map((n, i) => (n.nodeType.kind === "user" || n.nodeType.kind === "assistant") ? i : -1)
+        .map((n, i) => {
+          // Main session: user + assistant only
+          if (n.branchLevel === 0) {
+            return (n.nodeType.kind === "user" || n.nodeType.kind === "assistant") ? i : -1
+          }
+          // Agent: assistant only (tools filtered via getVisualBranch returning -1)
+          return n.nodeType.kind === "assistant" ? i : -1
+        })
         .filter(i => i >= 0)
     case "details":
     case "focus":
@@ -77,6 +84,13 @@ export function filterByZoom(nodes: Node[], level: ZoomLevel): number[] {
 export function getVisualBranch(node: Node, level: ZoomLevel): number {
   switch (level) {
     case "conversations":
+      if (node.branchLevel > 0) {
+        // Show agent assistant nodes on offset rows, skip tools
+        if (node.nodeType.kind === "assistant") {
+          return 2 + node.branchLevel
+        }
+        return -1 // filtered out by caller
+      }
       switch (node.nodeType.kind) {
         case "user": return 0
         case "assistant": return 1
@@ -84,10 +98,18 @@ export function getVisualBranch(node: Node, level: ZoomLevel): number {
       }
     case "details":
     case "focus":
+      if (node.branchLevel > 0) {
+        // Each agent gets 2 rows: asst + tool
+        // Agent 1 (branchLevel=1) → rows 3,4
+        // Agent 2 (branchLevel=2) → rows 5,6
+        const base = 3 + (node.branchLevel - 1) * 2
+        return node.nodeType.kind === "assistant" ? base : base + 1
+      }
+      // Main session unchanged
       switch (node.nodeType.kind) {
         case "user": return 0
         case "assistant": return 1
-        default: return 2 + node.branchLevel
+        default: return 2
       }
     case "sessions":
       return 0

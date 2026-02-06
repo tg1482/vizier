@@ -8,6 +8,8 @@ export type SessionEvent = {
   type: string
   message?: Message
   timestamp: string // ISO 8601
+  data?: { agentId?: string; type?: string }
+  parentToolUseID?: string
 }
 
 export type Message = {

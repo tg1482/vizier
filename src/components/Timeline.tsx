@@ -52,13 +52,14 @@ function formatTime(ts: number): string {
   return `${h}:${m}`
 }
 
-const ROW_LABELS: Record<number, string> = {
-  0: "User ",
-  1: "Asst ",
-  2: "Tool ",
-  3: "Tool\u00B2",
-  4: "Tool\u00B3",
-  5: "Tool\u2074",
+function getRowLabel(row: number): string {
+  if (row === 0) return "User "
+  if (row === 1) return "Asst "
+  if (row === 2) return "Tool "
+  // Agent rows: pairs of (Asst, Tool) starting at row 3
+  // Row 3,5,7,... = " Asst" (indented)
+  // Row 4,6,8,... = " Tool" (indented)
+  return (row - 3) % 2 === 0 ? " Asst" : " Tool"
 }
 
 // Column widths per cell mode
@@ -126,7 +127,7 @@ export function Timeline({ graph, currentLevel, cursorInLevel, zoom, cellMode, b
     const b = getVisualBranch(graph.nodes[idx], zoom)
     if (b > maxBranch) maxBranch = b
   }
-  maxBranch = Math.min(maxBranch, 6)
+  maxBranch = Math.min(maxBranch, 14) // 3 main rows + up to ~5 parallel agents × 2 rows
 
   // Pre-compute connectors: │ at the start of the cell (position 0)
   const connectorGaps: Set<number>[] = Array.from({ length: maxBranch }, () => new Set())
@@ -145,8 +146,9 @@ export function Timeline({ graph, currentLevel, cursorInLevel, zoom, cellMode, b
   }
 
   // --- Sticky: for each branch, find the most recent node before the window ---
+  // Only for main session rows (0-2) — agent rows don't need sticky context
   const stickyNodes: Map<number, number> = new Map()
-  for (let vb = 0; vb <= maxBranch; vb++) {
+  for (let vb = 0; vb <= Math.min(maxBranch, 2); vb++) {
     let hasVisibleNode = false
     for (let col = 0; col < numCols; col++) {
       if (getVisualBranch(graph.nodes[windowIndices[col]], zoom) === vb) {
@@ -268,7 +270,7 @@ export function Timeline({ graph, currentLevel, cursorInLevel, zoom, cellMode, b
   // --- Build branch rows ---
   const rows: React.ReactNode[] = []
   for (let vb = 0; vb <= maxBranch; vb++) {
-    const label = ROW_LABELS[vb] ?? "Tool\u207A"
+    const label = getRowLabel(vb)
     const isCurrentRow = vb === currentLevel
     const sticky = stickyNodes.get(vb)
 
