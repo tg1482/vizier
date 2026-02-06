@@ -1,9 +1,9 @@
 {
-  "name": "vizzy",
+  "name": "vizier",
   "version": "2.0.0",
   "type": "module",
   "bin": {
-    "vizzy": "./src/index.tsx"
+    "vizier": "./src/index.tsx"
   },
   "scripts": {
     "dev": "bun run src/index.tsx"
