@@ -6,71 +6,6 @@ Watch your sessions unfold on a horizontal timeline — zoom between high-level 
 
 ![Vizier TUI screenshot](assets/vizier.png)
 
-## Requirements
-
-- Bun (to run the CLI)
-- Claude Code sessions available under `~/.claude/projects`
-
-## Quick Start
-
-```bash
-bun install
-make dev
-```
-
-Or point at a specific project/session:
-
-```bash
-bun run src/index.tsx -- --project /path/to/project
-bun run src/index.tsx -- --session <session-id> --project /path/to/project
-```
-
-## Zoom Levels
-
-Navigate four levels of abstraction with `z` (zoom in) and `x` (zoom out):
-
-| Level | What you see |
-|---|---|
-| **SESSIONS** | Bird's-eye view — first and last nodes only |
-| **CONVERSATIONS** | User ↔ Assistant turns |
-| **DETAILS** | Full execution tree — tools, agents, everything |
-| **FOCUS** | Deep dive into a single selected node |
-
-## Controls
-
-### Navigation
-
-| Key | Action |
-|---|---|
-| `h` / `l` | Chronological prev/next (across all levels) |
-| `j` / `k` | Move down/up one branch level |
-| `Shift+←` / `Shift+→` | Navigate within same level |
-| `g` / `G` | Jump to start/end of current level |
-
-### Views & Modes
-
-| Key | Action |
-|---|---|
-| `z` / `x` | Zoom in / out |
-| `w` | Toggle preview mode (content snippets in timeline) |
-| `f` | Toggle follow mode (auto-track latest node) |
-| `t` | Toggle timeline panel |
-| `d` | Toggle details panel |
-| `s` | Toggle session list |
-| `J` / `K` | Scroll details panel |
-| `q` | Quit |
-
-## Symbols
-
-| Symbol | Meaning |
-|---|---|
-| `●` | User message |
-| `◉` | Assistant message |
-| `⬢` | Tool call (Read, Write, Grep, etc.) |
-| `✓` / `✗` | Tool success / error |
-| `⟐` | Agent start/end |
-| `○` | Progress |
-
 ## Features
 
 - **Real-time updates** — watches session files as Claude Code runs
@@ -84,17 +19,5 @@ Navigate four levels of abstraction with `z` (zoom in) and `x` (zoom out):
 ## Install
 
 ```bash
-make install
-```
-
-This runs `bun link` to make the `vizier` command available globally.
-
-Or install from npm via Bun:
-
-```bash
 bun add -g vizier
 ```
-
----
-
-If something looks off in your timeline, double‑check the project path or session ID.
