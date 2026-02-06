@@ -81,6 +81,104 @@ function getStickyW(mode: CellMode): number {
   return mode === "preview" ? STICKY_W_PREVIEW : STICKY_W_SYMBOL
 }
 
+// Detail line: only for node types where it adds info beyond the preview
+function getNodeDetailLine(node: Node, maxLen: number): string {
+  const trunc = (s: string) => {
+    const clean = s.replace(/[\n\r]+/g, " ").trim()
+    return clean.length > maxLen ? clean.slice(0, maxLen - 1) + "\u2026" : clean
+  }
+  const t = node.nodeType
+  switch (t.kind) {
+    case "tool_call": return trunc(t.input)
+    case "tool_use": return trunc(t.input)
+    case "tool_result": return trunc(t.output)
+    default: return ""
+  }
+}
+
+// --- Peek: expanded preview for cursor node ---
+const PEEK_BODY_LINES = 2
+
+function getNodePeekLabel(node: Node): { text: string; color: string; usage: string } {
+  let label = ""
+  let color = "gray"
+  const t = node.nodeType
+  switch (t.kind) {
+    case "user": label = "User"; color = "cyan"; break
+    case "assistant": label = "Asst"; color = "green"; break
+    case "tool_call": {
+      const status = t.output === null ? "PENDING" : t.isError ? "ERROR" : "OK"
+      label = `${t.name} [${status}]`
+      color = t.output === null ? "yellow" : t.isError ? "red" : "green"
+      break
+    }
+    case "tool_use": label = t.name; color = "yellow"; break
+    case "tool_result": {
+      label = t.isError ? "Result [ERROR]" : "Result [OK]"
+      color = t.isError ? "red" : "green"
+      break
+    }
+    case "agent_start": label = `Agent: ${t.agentType}`; color = "magenta"; break
+    case "agent_end": label = "Agent End"; color = "gray"; break
+    case "progress": label = "Progress"; color = "gray"; break
+  }
+  let usage = ""
+  if (node.usage) {
+    const u = node.usage
+    const parts: string[] = []
+    if (u.input_tokens || u.output_tokens) parts.push(`t:${(u.input_tokens ?? 0) + (u.output_tokens ?? 0)}`)
+    if (u.cache_read_input_tokens) parts.push(`cr:${u.cache_read_input_tokens}`)
+    if (u.cache_creation_input_tokens) parts.push(`cc:${u.cache_creation_input_tokens}`)
+    usage = parts.join(" ")
+  }
+  return { text: label, color, usage }
+}
+
+function getNodePeekLines(node: Node, maxWidth: number, maxLines: number): string[] {
+  const trunc = (s: string) => {
+    const clean = s.replace(/\r/g, "")
+    return clean.length > maxWidth ? clean.slice(0, maxWidth - 1) + "\u2026" : clean
+  }
+
+  let rawText = ""
+  const t = node.nodeType
+  switch (t.kind) {
+    case "user": rawText = t.text; break
+    case "assistant": rawText = t.text; break
+    case "progress": rawText = t.text; break
+    case "tool_call": rawText = t.input; break
+    case "tool_use": rawText = t.input; break
+    case "tool_result": rawText = t.output; break
+    case "agent_start": rawText = `Type: ${t.agentType}  ID: ${t.agentId}`; break
+    case "agent_end": rawText = `ID: ${t.agentId}`; break
+  }
+
+  // For tool inputs, try to format JSON as key: value pairs
+  if (t.kind === "tool_call" || t.kind === "tool_use") {
+    try {
+      const parsed = JSON.parse(rawText)
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+        const lines: string[] = []
+        for (const [key, val] of Object.entries(parsed)) {
+          if (lines.length >= maxLines) break
+          const valStr = typeof val === "string"
+            ? val.replace(/\n/g, " ").replace(/\r/g, "")
+            : JSON.stringify(val)
+          lines.push(trunc(`${key}: ${valStr}`))
+        }
+        return lines
+      }
+    } catch { /* fall through */ }
+  }
+
+  const lines: string[] = []
+  for (const l of rawText.split("\n")) {
+    if (lines.length >= maxLines) break
+    lines.push(trunc(l))
+  }
+  return lines
+}
+
 export function Timeline({ graph, currentLevel, cursorInLevel, zoom, cellMode, blinkState, termWidth }: Props) {
   const isPreview = cellMode === "preview"
   const colW = getColW(cellMode)
@@ -102,6 +200,13 @@ export function Timeline({ graph, currentLevel, cursorInLevel, zoom, cellMode, b
     }
   }
   const cursorGlobalPos = currentLevelPositions[cursorInLevel] ?? 0
+
+  // Peek: cursor node for expanded preview
+  const peekNodeGlobalIdx = cursorGlobalPos < visibleIndices.length ? visibleIndices[cursorGlobalPos] : undefined
+  const cursorNode = peekNodeGlobalIdx !== undefined ? graph.nodes[peekNodeGlobalIdx] : null
+  const peekLabel = cursorNode ? getNodePeekLabel(cursorNode) : null
+  const peekMaxW = termWidth - 10
+  const peekLines = cursorNode ? getNodePeekLines(cursorNode, peekMaxW, PEEK_BODY_LINES) : []
 
   // Camera-centric windowing — reserve space for sticky column
   const labelW = 5
@@ -307,6 +412,55 @@ export function Timeline({ graph, currentLevel, cursorInLevel, zoom, cellMode, b
       </Text>
     )
 
+    // Detail row (preview mode only) — shows input/content below nodes that have extra info
+    if (isPreview) {
+      // Check if any node on this branch in the window has a detail line
+      let hasAnyDetail = false
+      for (let col = 0; col < numCols; col++) {
+        const idx = windowIndices[col]
+        const node = graph.nodes[idx]
+        if (getVisualBranch(node, zoom) === vb && getNodeDetailLine(node, PREVIEW_TEXT_W - 1)) {
+          hasAnyDetail = true
+          break
+        }
+      }
+
+      if (hasAnyDetail) {
+        const detailSpans: React.ReactNode[] = []
+
+        if (hasAnyStickyNode) {
+          const hasSticky = stickyNodes.has(vb) || stickyNodes.has(vb + 1)
+          if (hasSticky) {
+            detailSpans.push(<Text key={`sdetail-${vb}`} dimColor>{pad(stickyW - 1) + "\u2502"}</Text>)
+          } else {
+            detailSpans.push(<Text key={`sdetail-${vb}`}>{pad(stickyW)}</Text>)
+          }
+        }
+
+        for (let col = 0; col < numCols; col++) {
+          const idx = windowIndices[col]
+          const node = graph.nodes[idx]
+          const nodeBranch = getVisualBranch(node, zoom)
+
+          if (nodeBranch === vb) {
+            const detail = getNodeDetailLine(node, PREVIEW_TEXT_W - 1)
+            detailSpans.push(<Text key={col} dimColor>{"   " + detail.padEnd(colW - 3)}</Text>)
+          } else if (vb < maxBranch && connectorGaps[vb].has(col)) {
+            detailSpans.push(<Text key={col} dimColor>{"\u2502" + pad(colW - 1)}</Text>)
+          } else {
+            detailSpans.push(<Text key={col}>{pad(colW)}</Text>)
+          }
+        }
+
+        rows.push(
+          <Text key={`detail-${vb}`}>
+            {pad(labelW)}
+            {detailSpans}
+          </Text>
+        )
+      }
+    }
+
     // Connector row
     if (vb < maxBranch) {
       const connSpans: React.ReactNode[] = []
@@ -347,6 +501,18 @@ export function Timeline({ graph, currentLevel, cursorInLevel, zoom, cellMode, b
       </Text>
       <Text>{" "}</Text>
       {rows}
+      {cursorNode && peekLabel && (
+        <>
+          <Text dimColor>{pad(labelW) + "\u2500".repeat((hasAnyStickyNode ? stickyW : 0) + numCols * colW)}</Text>
+          <Text>
+            <Text bold color={peekLabel.color as any}>{" \u25B8 " + peekLabel.text}</Text>
+            {peekLabel.usage ? <Text dimColor>{" " + peekLabel.usage}</Text> : null}
+          </Text>
+          {peekLines.map((line, i) => (
+            <Text key={`peek-${i}`} dimColor>{"   " + line}</Text>
+          ))}
+        </>
+      )}
     </Box>
   )
 }

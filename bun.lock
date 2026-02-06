@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "vizzy",
+      "name": "vizier",
       "dependencies": {
         "chokidar": "^4.0.3",
         "ink": "^5.2.1",

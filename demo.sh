@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 echo "╔════════════════════════════════════════════════════════════╗"
-echo "║              VIZZY - Claude Code Visualizer                ║"
+echo "║             VIZIER - Claude Code Visualizer                ║"
 echo "╚════════════════════════════════════════════════════════════╝"
 echo ""
 echo "Horizontal Timeline Visualization:"

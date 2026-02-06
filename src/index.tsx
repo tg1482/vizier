@@ -32,7 +32,7 @@ async function main() {
   let sessionId = args.session || getLatestSessionId(claudeDir, project)
   if (!sessionId) {
     console.error(`No sessions found for project: ${projectPath}`)
-    console.error("\nUsage: vizzy --session <session-id> --project <project-path>")
+    console.error("\nUsage: vizier --session <session-id> --project <project-path>")
     process.exit(1)
   }
 
@@ -57,6 +57,7 @@ async function main() {
       sessionId={sessionId}
       claudeDir={claudeDir}
       project={project}
+      projectPath={projectPath}
     />,
     { exitOnCtrlC: true }
   )

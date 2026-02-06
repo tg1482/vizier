@@ -1,4 +1,4 @@
-# Vizzy 🔮
+# Vizier
 
 **Timeline visualizer for Claude Code sessions.**
 
@@ -80,7 +80,7 @@ Navigate four levels of abstraction with `z` (zoom in) and `x` (zoom out):
 make install
 ```
 
-This runs `bun link` to make the `vizzy` command available globally.
+This runs `bun link` to make the `vizier` command available globally.
 
 ---
 
