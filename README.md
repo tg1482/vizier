@@ -4,6 +4,34 @@
 
 Watch your sessions unfold on a horizontal timeline — zoom between high-level conversation flow and full execution detail. Built with TypeScript, Bun, and React Ink.
 
+
+┌────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ [DETAILS] ● LIVE h/l:chrono shift+arrow:level j/k:row w:preview t:timeline d:details s:sessions        │
+│  :follow q:quit                                                                                        │
+│ Time 22:01             22:01             22:01             22:04          22:06                22:06   │
+│            22:07                                                                                       │
+│                                                                                                        │
+│ User                                              ──●         ──●──●                                   │
+│                                                   │  │        │     │                                  │
+│ Asst ──◉   ──◉   ──◉   ──◉   ──◉   ──◉         ──◉   ──◉   ──◉      ──◉   ──◉                          │
+│         │  │  │  │  │  │  │  │  │  │  │        │        │  │           │  │  │                         │
+│ Tool    ──✓   ──✓   ──✓   ──✓   ──✓   ──✓──✓──✓         ──✓            ──✓   ──✓                       │
+│                                                                                 │                      │
+│  Asst                                                                           ──◉                    │
+│                                                                                    │                   │
+│  Tool                                                                              ──✓──✓──✓──✓──✓     │
+│      ─────────────────────────────────────────────────────────────────────────────────────────────     │
+│  ▸ User                                                                                                │
+│    this is not addign much value - delete it all                                                       │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+User 3/5 | 108 nodes | DETAILS | claude-opus-4-6 | in:144 out:7.5k cache:4.4M LIVE
+
+
+## Requirements
+
+- Bun (to run the CLI)
+- Claude Code sessions available under `~/.claude/projects`
+
 ## Quick Start
 
 ```bash
@@ -72,7 +100,7 @@ Navigate four levels of abstraction with `z` (zoom in) and `x` (zoom out):
 - **Preview mode** — `w` to see content snippets inline on the timeline
 - **Token stats** — input/output/cache token counts in the status bar
 - **Sticky context** — shows the most recent parent node before the viewport
-- **Agent discovery** — automatically finds and visualizes subagent branches
+- **Agent discovery** — automatically finds and visualizes subagent branches (see `AGENTS.md`)
 
 ## Install
 
@@ -84,4 +112,4 @@ This runs `bun link` to make the `vizier` command available globally.
 
 ---
 
-*Built with Claude Code.*
+If something looks off in your timeline, double‑check the project path or session ID.
