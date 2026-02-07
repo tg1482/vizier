@@ -11,8 +11,10 @@ type Props = {
   scrollOffset: number
 }
 
+type InkColor = "black" | "red" | "green" | "yellow" | "blue" | "magenta" | "cyan" | "white" | "gray" | undefined
+
 // Flatten node content into plain text lines with optional color hints
-type ContentLine = { text: string; color?: string; dimColor?: boolean; bold?: boolean }
+type ContentLine = { text: string; color?: InkColor; dimColor?: boolean; bold?: boolean; keyLen?: number }
 
 function nodeToLines(node: Node): ContentLine[] {
   const lines: ContentLine[] = []
@@ -26,7 +28,11 @@ function nodeToLines(node: Node): ContentLine[] {
     const parts = [`in:${u.input_tokens ?? 0}`, `out:${u.output_tokens ?? 0}`]
     if (u.cache_read_input_tokens) parts.push(`cache_read:${u.cache_read_input_tokens}`)
     if (u.cache_creation_input_tokens) parts.push(`cache_create:${u.cache_creation_input_tokens}`)
+    if (u.reasoning_tokens) parts.push(`reasoning:${u.reasoning_tokens}`)
     lines.push({ text: `Tokens: ${parts.join(" ")}`, dimColor: true })
+  }
+  if (node.cost !== undefined && node.cost > 0) {
+    lines.push({ text: `Cost: $${node.cost.toFixed(4)}`, dimColor: true })
   }
   lines.push({ text: "" })
 
@@ -90,6 +96,15 @@ function nodeToLines(node: Node): ContentLine[] {
       lines.push({ text: "Progress:", dimColor: true })
       lines.push({ text: node.nodeType.text })
       break
+    case "reasoning":
+      lines.push({ text: "Reasoning:", dimColor: true })
+      for (const l of node.nodeType.text.split("\n")) lines.push({ text: l, dimColor: true })
+      break
+    case "patch":
+      lines.push({ text: `Patch: ${node.nodeType.hash.slice(0, 8)}`, color: "blue" })
+      lines.push({ text: "" })
+      for (const f of node.nodeType.files) lines.push({ text: f })
+      break
   }
   return lines
 }
@@ -140,7 +155,7 @@ function jsonValueToLines(lines: ContentLine[], value: unknown, indent: number) 
       } else {
         const valStr = val === null ? "null" : typeof val === "string" ? val : String(val)
         // Store as composite — key colored, value plain
-        lines.push({ text: `${pad}${key}: ${valStr}`, color: "yellow", _keyLen: key.length + 2 } as any)
+        lines.push({ text: `${pad}${key}: ${valStr}`, color: "yellow", keyLen: key.length + 2 })
       }
     }
     return
@@ -177,20 +192,19 @@ export function DetailsPanel({ node, levelName, position, total, height, scrollO
       </Text>
       {visibleLines.map((line, i) => {
         // Handle key:value lines where key should be colored
-        const keyLen = (line as any)._keyLen as number | undefined
-        if (keyLen && line.color) {
+        if (line.keyLen && line.color) {
           const pad = line.text.length - line.text.trimStart().length
           const prefix = line.text.slice(0, pad)
-          const keyPart = line.text.slice(pad, pad + keyLen)
-          const valPart = line.text.slice(pad + keyLen)
+          const keyPart = line.text.slice(pad, pad + line.keyLen)
+          const valPart = line.text.slice(pad + line.keyLen)
           return (
             <Text key={i}>
-              {prefix}<Text color={line.color as any}>{keyPart}</Text>{valPart}
+              {prefix}<Text color={line.color}>{keyPart}</Text>{valPart}
             </Text>
           )
         }
         return (
-          <Text key={i} color={line.color as any} dimColor={line.dimColor} bold={line.bold}>
+          <Text key={i} color={line.color} dimColor={line.dimColor} bold={line.bold}>
             {line.text}
           </Text>
         )

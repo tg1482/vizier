@@ -1,4 +1,4 @@
-import type { SessionEvent, Node, NodeType } from "./types"
+import type { SessionEvent, Node, NodeType } from "../../core/types"
 
 let counter = 0
 function generateId(): string {
@@ -86,7 +86,7 @@ export function parseEventToNodes(event: SessionEvent): Node[] {
   return nodes
 }
 
-export function extractTextContent(content: unknown): string {
+function extractTextContent(content: unknown): string {
   if (typeof content === "string") return content
   if (!Array.isArray(content)) return ""
   return content

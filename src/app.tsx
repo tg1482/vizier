@@ -1,16 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { Box, useInput, useStdout, useApp } from "ink"
-import type { Graph, SessionInfo } from "./core/types"
+import type { Graph, SessionInfo, Source } from "./core/types"
 import type { ZoomLevel, CellMode } from "./core/zoom"
 import { getVisualBranch } from "./core/zoom"
-import { buildGraph } from "./core/graph"
-import {
-  watchSession,
-  readAllEvents,
-  getSessionFile,
-  discoverAgentFiles,
-  listSessions,
-} from "./core/watcher"
 import { Timeline } from "./components/Timeline"
 import { DetailsPanel } from "./components/DetailsPanel"
 import { SessionList } from "./components/SessionList"
@@ -22,8 +14,7 @@ type Mode = "normal" | "input"
 type Props = {
   initialGraph: Graph
   sessionId: string
-  claudeDir: string
-  project: string
+  source: Source
 }
 
 // Get the nth node at a given level (returns global index)
@@ -97,7 +88,7 @@ function getLatestNodePosition(graph: Graph, zoom: ZoomLevel): { level: number; 
   return { level, pos: Math.max(0, pos - 1) }
 }
 
-export function App({ initialGraph, sessionId: initialSessionId, claudeDir, project }: Props) {
+export function App({ initialGraph, sessionId: initialSessionId, source }: Props) {
   const { stdout } = useStdout()
   const { exit } = useApp()
   const termWidth = stdout?.columns ?? 120
@@ -121,18 +112,22 @@ export function App({ initialGraph, sessionId: initialSessionId, claudeDir, proj
   const [zoom, setZoom] = useState<ZoomLevel>("details")
   const [cellMode, setCellMode] = useState<CellMode>("symbol")
   const [blinkState, setBlinkState] = useState(false)
-  const [focusedNode, setFocusedNode] = useState<number | null>(null)
 
   const [timelineOpen, setTimelineOpen] = useState(true)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [sessionListOpen, setSessionListOpen] = useState(false)
   const [sessionListCursor, setSessionListCursor] = useState(0)
-  const [sessions, setSessions] = useState<SessionInfo[]>(() => listSessions(claudeDir, project))
+  const [sessions, setSessions] = useState<SessionInfo[]>([])
 
   const [detailsScroll, setDetailsScroll] = useState(0)
   const [follow, setFollow] = useState(false)
   const followRef = useRef(false)
   const [mode, setMode] = useState<Mode>("normal")
+
+  // Load sessions on mount
+  useEffect(() => {
+    source.listSessions().then(setSessions)
+  }, [source])
 
   // Only blink when the session is still running (last node is a pending tool call)
   const hasActiveNodes = useMemo(() => {
@@ -150,13 +145,9 @@ export function App({ initialGraph, sessionId: initialSessionId, claudeDir, proj
     return () => clearInterval(interval)
   }, [hasActiveNodes])
 
-  // File watcher
+  // File watcher via source
   useEffect(() => {
-    const watcher = watchSession(claudeDir, project, sessionId, () => {
-      const sessionFile = getSessionFile(claudeDir, project, sessionId)
-      const agentFiles = discoverAgentFiles(claudeDir, project, sessionId)
-      const events = readAllEvents(sessionFile, agentFiles)
-      const newGraph = buildGraph(events)
+    const cleanup = source.watch(sessionId, (newGraph) => {
       setGraph(prev => {
         if (followRef.current) {
           const latest = getLatestNodePosition(newGraph, zoom)
@@ -172,10 +163,10 @@ export function App({ initialGraph, sessionId: initialSessionId, claudeDir, proj
         }
         return newGraph
       })
-      setSessions(listSessions(claudeDir, project))
+      source.listSessions().then(setSessions)
     })
-    return () => { watcher.close() }
-  }, [sessionId, claudeDir, project])
+    return cleanup
+  }, [sessionId, source])
 
   // Derived values
   const nodesInLevel = graph.nodes.filter(n => getVisualBranch(n, zoom) === currentLevel).length
@@ -192,18 +183,17 @@ export function App({ initialGraph, sessionId: initialSessionId, claudeDir, proj
   }
 
   // Switch session helper
-  const switchSession = useCallback((newSessionId: string) => {
-    const sessionFile = getSessionFile(claudeDir, project, newSessionId)
-    const agentFiles = discoverAgentFiles(claudeDir, project, newSessionId)
-    const events = readAllEvents(sessionFile, agentFiles)
-    const newGraph = buildGraph(events)
+  const switchSession = useCallback(async (newSessionId: string) => {
+    const newGraph = await source.readGraph(newSessionId)
     setGraph(newGraph)
     setSessionId(newSessionId)
     setCurrentLevel(0)
     setCursorInLevel(0)
     setSessionListOpen(false)
     setTimelineOpen(true)
-  }, [claudeDir, project])
+  }, [source])
+
+  const canSendMessage = !!source.sendMessage
 
   useInput((input, key) => {
     if (mode === "input") {
@@ -230,13 +220,6 @@ export function App({ initialGraph, sessionId: initialSessionId, claudeDir, proj
     if (input === "d") { setDetailsOpen(prev => !prev); return }
     if (input === "w") { setCellMode(prev => prev === "symbol" ? "preview" : "symbol"); return }
 
-    if (input === "z") {
-      if (currentNodeIdx !== null) {
-        setFocusedNode(prev => prev === currentNodeIdx ? null : currentNodeIdx)
-      }
-      return
-    }
-
     if (input === "f") {
       setFollow(prev => {
         const next = !prev
@@ -251,8 +234,13 @@ export function App({ initialGraph, sessionId: initialSessionId, claudeDir, proj
       return
     }
 
-    if (input === "i") {
+    if (input === "i" && canSendMessage) {
       setMode("input")
+      return
+    }
+
+    if (input === "x" && source.abortSession) {
+      source.abortSession(sessionId)
       return
     }
 
@@ -353,10 +341,14 @@ export function App({ initialGraph, sessionId: initialSessionId, claudeDir, proj
     }
   })
 
-  const handleCommandSubmit = useCallback((_text: string) => {
-    // SDK integration: will be wired in Phase 3
+  const handleCommandSubmit = useCallback((text: string) => {
+    if (source.sendMessage) {
+      source.sendMessage(sessionId, text)
+      setFollow(true)
+      followRef.current = true
+    }
     setMode("normal")
-  }, [])
+  }, [source, sessionId])
 
   // Use termHeight - 1 so Ink uses eraseLines (with output diff) instead of
   // clearTerminal (full screen flash). Ink triggers clearTerminal when

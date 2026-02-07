@@ -20,6 +20,8 @@ export function getNodePreview(node: Node, maxLen = 18): string {
     case "agent_start": return node.nodeType.agentType
     case "agent_end": return "end"
     case "progress": return firstWords(node.nodeType.text, 3, maxLen)
+    case "reasoning": return firstWords(node.nodeType.text, 4, maxLen)
+    case "patch": return `${node.nodeType.files.length} files`
   }
 }
 
@@ -40,24 +42,6 @@ export function findStickyNode(
     }
   }
   return best
-}
-
-export function zoomIn(level: ZoomLevel): ZoomLevel {
-  switch (level) {
-    case "sessions": return "conversations"
-    case "conversations": return "details"
-    case "details": return "focus"
-    case "focus": return "focus"
-  }
-}
-
-export function zoomOut(level: ZoomLevel): ZoomLevel {
-  switch (level) {
-    case "sessions": return "sessions"
-    case "conversations": return "sessions"
-    case "details": return "conversations"
-    case "focus": return "details"
-  }
 }
 
 export function filterByZoom(nodes: Node[], level: ZoomLevel): number[] {
@@ -103,12 +87,15 @@ export function getVisualBranch(node: Node, level: ZoomLevel): number {
         // Agent 1 (branchLevel=1) → rows 3,4
         // Agent 2 (branchLevel=2) → rows 5,6
         const base = 3 + (node.branchLevel - 1) * 2
-        return node.nodeType.kind === "assistant" ? base : base + 1
+        const k = node.nodeType.kind
+        return (k === "assistant" || k === "reasoning") ? base : base + 1
       }
       // Main session unchanged
       switch (node.nodeType.kind) {
         case "user": return 0
         case "assistant": return 1
+        case "reasoning": return 1
+        case "patch": return 1
         default: return 2
       }
     case "sessions":

@@ -1,7 +1,7 @@
 import { watch as chokidarWatch, type FSWatcher } from "chokidar"
 import { readFileSync, readdirSync, existsSync, statSync } from "fs"
 import { join, extname, basename } from "path"
-import type { SessionEvent, SessionInfo } from "./types"
+import type { SessionEvent, SessionInfo } from "../../core/types"
 import { homedir } from "os"
 
 export function getClaudeDir(): string {
@@ -10,11 +10,6 @@ export function getClaudeDir(): string {
 
 export function getProjectSlug(cwd: string): string {
   return cwd.replace(/\//g, "-")
-}
-
-export function getLatestSessionId(claudeDir: string, project: string): string | null {
-  const sessions = listSessions(claudeDir, project)
-  return sessions.length > 0 ? sessions[0].id : null
 }
 
 function readJsonlFile(path: string): SessionEvent[] {
@@ -53,7 +48,7 @@ export function getSessionFile(claudeDir: string, project: string, sessionId: st
   return join(claudeDir, "projects", project, `${sessionId}.jsonl`)
 }
 
-export type WatchCallback = () => void
+type WatchCallback = () => void
 
 export function watchSession(
   claudeDir: string,
