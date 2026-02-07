@@ -3,7 +3,7 @@ import React from "react"
 import { render } from "ink"
 import { App } from "./app"
 import { createOpenCodeSource, storageExists } from "./sources/opencode/index"
-import { createClaudeSource, getClaudeDir, getProjectSlug, listClaudeSessions } from "./sources/claude/index"
+import { createClaudeSource, getClaudeDir, getProjectSlug } from "./sources/claude/index"
 import type { Source } from "./core/types"
 
 function parseArgs(): { session?: string; project?: string; source?: string; server?: string } {

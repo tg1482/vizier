@@ -1,27 +1,6 @@
-import type { SessionEvent, Graph, SessionStats } from "../../core/types"
+import type { SessionEvent, Graph, Node } from "../../core/types"
+import { computeStats } from "../../core/stats"
 import { parseEventToNodes } from "./parser"
-
-function computeStats(events: SessionEvent[]): SessionStats {
-  let totalInputTokens = 0
-  let totalOutputTokens = 0
-  let totalCacheRead = 0
-  let totalCacheCreation = 0
-  let model: string | null = null
-
-  for (const event of events) {
-    const usage = event.message?.usage
-    if (!usage) continue
-    totalInputTokens += usage.input_tokens ?? 0
-    totalOutputTokens += usage.output_tokens ?? 0
-    totalCacheRead += usage.cache_read_input_tokens ?? 0
-    totalCacheCreation += usage.cache_creation_input_tokens ?? 0
-    if (event.message?.model) model = event.message.model
-  }
-
-  return { totalInputTokens, totalOutputTokens, totalCacheRead, totalCacheCreation, model }
-}
-
-import type { Node } from "../../core/types"
 
 // Merge tool_use + tool_result pairs into single tool_call nodes
 function mergeToolCalls(nodes: Node[]): Node[] {
@@ -147,7 +126,11 @@ export function buildGraph(events: SessionEvent[]): Graph {
       isBranch: n.branchLevel > 0,
     }))
 
-  const stats = computeStats(events)
+  const stats = computeStats(
+    events
+      .filter(e => e.message?.usage)
+      .map(e => ({ usage: e.message!.usage, model: e.message!.model }))
+  )
 
   return { nodes, edges, stats }
 }

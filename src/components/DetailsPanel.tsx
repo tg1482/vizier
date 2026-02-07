@@ -11,8 +11,10 @@ type Props = {
   scrollOffset: number
 }
 
+type InkColor = "black" | "red" | "green" | "yellow" | "blue" | "magenta" | "cyan" | "white" | "gray" | undefined
+
 // Flatten node content into plain text lines with optional color hints
-type ContentLine = { text: string; color?: string; dimColor?: boolean; bold?: boolean }
+type ContentLine = { text: string; color?: InkColor; dimColor?: boolean; bold?: boolean; keyLen?: number }
 
 function nodeToLines(node: Node): ContentLine[] {
   const lines: ContentLine[] = []
@@ -153,7 +155,7 @@ function jsonValueToLines(lines: ContentLine[], value: unknown, indent: number) 
       } else {
         const valStr = val === null ? "null" : typeof val === "string" ? val : String(val)
         // Store as composite — key colored, value plain
-        lines.push({ text: `${pad}${key}: ${valStr}`, color: "yellow", _keyLen: key.length + 2 } as any)
+        lines.push({ text: `${pad}${key}: ${valStr}`, color: "yellow", keyLen: key.length + 2 })
       }
     }
     return
@@ -190,20 +192,19 @@ export function DetailsPanel({ node, levelName, position, total, height, scrollO
       </Text>
       {visibleLines.map((line, i) => {
         // Handle key:value lines where key should be colored
-        const keyLen = (line as any)._keyLen as number | undefined
-        if (keyLen && line.color) {
+        if (line.keyLen && line.color) {
           const pad = line.text.length - line.text.trimStart().length
           const prefix = line.text.slice(0, pad)
-          const keyPart = line.text.slice(pad, pad + keyLen)
-          const valPart = line.text.slice(pad + keyLen)
+          const keyPart = line.text.slice(pad, pad + line.keyLen)
+          const valPart = line.text.slice(pad + line.keyLen)
           return (
             <Text key={i}>
-              {prefix}<Text color={line.color as any}>{keyPart}</Text>{valPart}
+              {prefix}<Text color={line.color}>{keyPart}</Text>{valPart}
             </Text>
           )
         }
         return (
-          <Text key={i} color={line.color as any} dimColor={line.dimColor} bold={line.bold}>
+          <Text key={i} color={line.color} dimColor={line.dimColor} bold={line.bold}>
             {line.text}
           </Text>
         )

@@ -14,7 +14,9 @@ type Props = {
   termWidth: number
 }
 
-function getNodeInfo(node: Node): { symbol: string; color: string } {
+type InkColor = "black" | "red" | "green" | "yellow" | "blue" | "magenta" | "cyan" | "white" | "gray"
+
+function getNodeInfo(node: Node): { symbol: string; color: InkColor } {
   switch (node.nodeType.kind) {
     case "user": return { symbol: "\u25CF", color: "cyan" }          // ●
     case "assistant": return { symbol: "\u25C9", color: "green" }    // ◉
@@ -101,9 +103,9 @@ function getNodeDetailLine(node: Node, maxLen: number): string {
 // --- Peek: expanded preview for cursor node ---
 const PEEK_BODY_LINES = 2
 
-function getNodePeekLabel(node: Node): { text: string; color: string; usage: string } {
+function getNodePeekLabel(node: Node): { text: string; color: InkColor; usage: string } {
   let label = ""
-  let color = "gray"
+  let color: InkColor = "gray"
   const t = node.nodeType
   switch (t.kind) {
     case "user": label = "User"; color = "cyan"; break
@@ -511,7 +513,7 @@ export function Timeline({ graph, currentLevel, cursorInLevel, zoom, cellMode, b
         <>
           <Text dimColor>{pad(labelW) + "\u2500".repeat((hasAnyStickyNode ? stickyW : 0) + numCols * colW)}</Text>
           <Text>
-            <Text bold color={peekLabel.color as any}>{" \u25B8 " + peekLabel.text}</Text>
+            <Text bold color={peekLabel.color}>{" \u25B8 " + peekLabel.text}</Text>
             {peekLabel.usage ? <Text dimColor>{" " + peekLabel.usage}</Text> : null}
           </Text>
           {peekLines.map((line, i) => (

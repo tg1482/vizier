@@ -1,4 +1,5 @@
-import type { Graph, Node, Edge, SessionStats, Usage } from "../../core/types"
+import type { Graph, Node, Edge, Usage } from "../../core/types"
+import { computeStats, emptyStats } from "../../core/stats"
 import { readMessages, readParts } from "./reader"
 import type { OCMessage, OCPart } from "./reader"
 
@@ -175,52 +176,11 @@ export function buildOpenCodeGraph(sessionID: string): Graph {
     .map(n => ({ from: n.parentId!, to: n.id, isBranch: false }))
 
   // Compute stats
-  const stats = computeStats(messages)
+  const stats = computeStats(
+    messages
+      .filter(m => m.role === "assistant")
+      .map(m => ({ usage: mapTokens(m), model: getModelId(m), cost: m.cost }))
+  )
 
   return { nodes, edges, stats }
-}
-
-function computeStats(messages: OCMessage[]): SessionStats {
-  let totalInputTokens = 0
-  let totalOutputTokens = 0
-  let totalCacheRead = 0
-  let totalCacheCreation = 0
-  let totalReasoningTokens = 0
-  let totalCost = 0
-  let model: string | null = null
-
-  for (const msg of messages) {
-    if (msg.role !== "assistant") continue
-    const t = msg.tokens
-    if (t) {
-      totalInputTokens += t.input ?? 0
-      totalOutputTokens += t.output ?? 0
-      totalCacheRead += t.cache?.read ?? 0
-      totalCacheCreation += t.cache?.write ?? 0
-      totalReasoningTokens += t.reasoning ?? 0
-    }
-    if (msg.cost) totalCost += msg.cost
-    const mid = msg.modelID ?? msg.model?.modelID
-    if (mid) model = mid
-  }
-
-  return {
-    totalInputTokens,
-    totalOutputTokens,
-    totalCacheRead,
-    totalCacheCreation,
-    model,
-    totalCost: totalCost || undefined,
-    totalReasoningTokens: totalReasoningTokens || undefined,
-  }
-}
-
-function emptyStats(): SessionStats {
-  return {
-    totalInputTokens: 0,
-    totalOutputTokens: 0,
-    totalCacheRead: 0,
-    totalCacheCreation: 0,
-    model: null,
-  }
 }

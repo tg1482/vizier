@@ -112,7 +112,6 @@ export function App({ initialGraph, sessionId: initialSessionId, source }: Props
   const [zoom, setZoom] = useState<ZoomLevel>("details")
   const [cellMode, setCellMode] = useState<CellMode>("symbol")
   const [blinkState, setBlinkState] = useState(false)
-  const [focusedNode, setFocusedNode] = useState<number | null>(null)
 
   const [timelineOpen, setTimelineOpen] = useState(true)
   const [detailsOpen, setDetailsOpen] = useState(false)
@@ -220,13 +219,6 @@ export function App({ initialGraph, sessionId: initialSessionId, source }: Props
     if (input === "t") { setTimelineOpen(prev => !prev); return }
     if (input === "d") { setDetailsOpen(prev => !prev); return }
     if (input === "w") { setCellMode(prev => prev === "symbol" ? "preview" : "symbol"); return }
-
-    if (input === "z") {
-      if (currentNodeIdx !== null) {
-        setFocusedNode(prev => prev === currentNodeIdx ? null : currentNodeIdx)
-      }
-      return
-    }
 
     if (input === "f") {
       setFollow(prev => {

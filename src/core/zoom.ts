@@ -44,24 +44,6 @@ export function findStickyNode(
   return best
 }
 
-export function zoomIn(level: ZoomLevel): ZoomLevel {
-  switch (level) {
-    case "sessions": return "conversations"
-    case "conversations": return "details"
-    case "details": return "focus"
-    case "focus": return "focus"
-  }
-}
-
-export function zoomOut(level: ZoomLevel): ZoomLevel {
-  switch (level) {
-    case "sessions": return "sessions"
-    case "conversations": return "sessions"
-    case "details": return "conversations"
-    case "focus": return "details"
-  }
-}
-
 export function filterByZoom(nodes: Node[], level: ZoomLevel): number[] {
   switch (level) {
     case "sessions":
