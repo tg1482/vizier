@@ -1,4 +1,4 @@
-import type { SessionEvent, Node, NodeType } from "./types"
+import type { SessionEvent, Node, NodeType } from "../../core/types"
 
 let counter = 0
 function generateId(): string {

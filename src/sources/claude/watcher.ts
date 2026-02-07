@@ -1,7 +1,7 @@
 import { watch as chokidarWatch, type FSWatcher } from "chokidar"
 import { readFileSync, readdirSync, existsSync, statSync } from "fs"
 import { join, extname, basename } from "path"
-import type { SessionEvent, SessionInfo } from "./types"
+import type { SessionEvent, SessionInfo } from "../../core/types"
 import { homedir } from "os"
 
 export function getClaudeDir(): string {

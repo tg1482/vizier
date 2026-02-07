@@ -1,4 +1,4 @@
-import type { SessionEvent, Graph, SessionStats } from "./types"
+import type { SessionEvent, Graph, SessionStats } from "../../core/types"
 import { parseEventToNodes } from "./parser"
 
 function computeStats(events: SessionEvent[]): SessionStats {
@@ -21,7 +21,7 @@ function computeStats(events: SessionEvent[]): SessionStats {
   return { totalInputTokens, totalOutputTokens, totalCacheRead, totalCacheCreation, model }
 }
 
-import type { Node } from "./types"
+import type { Node } from "../../core/types"
 
 // Merge tool_use + tool_result pairs into single tool_call nodes
 function mergeToolCalls(nodes: Node[]): Node[] {

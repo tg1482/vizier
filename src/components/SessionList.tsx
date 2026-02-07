@@ -28,9 +28,11 @@ export function SessionList({ sessions, currentSessionId, cursor }: Props) {
 
         const color = session.waitingForUser ? "yellow" : isCurrent ? "green" : undefined
 
+        const titleStr = session.title ? ` ${session.title.slice(0, 40)}` : ""
+
         return (
           <Text key={session.id} color={color} bold={isSelected}>
-            {prefix}{shortId} | {time} | {String(session.nodeCount).padStart(4)} events{currentMarker}{waitingMarker}
+            {prefix}{shortId} | {time} | {String(session.nodeCount).padStart(4)} events{titleStr}{currentMarker}{waitingMarker}
           </Text>
         )
       })}

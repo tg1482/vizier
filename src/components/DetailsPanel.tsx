@@ -26,7 +26,11 @@ function nodeToLines(node: Node): ContentLine[] {
     const parts = [`in:${u.input_tokens ?? 0}`, `out:${u.output_tokens ?? 0}`]
     if (u.cache_read_input_tokens) parts.push(`cache_read:${u.cache_read_input_tokens}`)
     if (u.cache_creation_input_tokens) parts.push(`cache_create:${u.cache_creation_input_tokens}`)
+    if (u.reasoning_tokens) parts.push(`reasoning:${u.reasoning_tokens}`)
     lines.push({ text: `Tokens: ${parts.join(" ")}`, dimColor: true })
+  }
+  if (node.cost !== undefined && node.cost > 0) {
+    lines.push({ text: `Cost: $${node.cost.toFixed(4)}`, dimColor: true })
   }
   lines.push({ text: "" })
 
@@ -89,6 +93,15 @@ function nodeToLines(node: Node): ContentLine[] {
     case "progress":
       lines.push({ text: "Progress:", dimColor: true })
       lines.push({ text: node.nodeType.text })
+      break
+    case "reasoning":
+      lines.push({ text: "Reasoning:", dimColor: true })
+      for (const l of node.nodeType.text.split("\n")) lines.push({ text: l, dimColor: true })
+      break
+    case "patch":
+      lines.push({ text: `Patch: ${node.nodeType.hash.slice(0, 8)}`, color: "blue" })
+      lines.push({ text: "" })
+      for (const f of node.nodeType.files) lines.push({ text: f })
       break
   }
   return lines

@@ -23,6 +23,7 @@ function formatTokens(n: number): string {
 
 export function StatusBar({ levelName, position, total, totalNodes, zoom, isLive, follow, stats }: Props) {
   const tokenStr = `in:${formatTokens(stats.totalInputTokens)} out:${formatTokens(stats.totalOutputTokens)} cache:${formatTokens(stats.totalCacheRead)}`
+  const costStr = stats.totalCost ? ` $${stats.totalCost.toFixed(2)}` : ""
 
   return (
     <Box>
@@ -31,6 +32,7 @@ export function StatusBar({ levelName, position, total, totalNodes, zoom, isLive
       </Text>
       {stats.model && <Text dimColor> | {stats.model}</Text>}
       <Text dimColor> | {tokenStr}</Text>
+      {costStr && <Text dimColor> |{costStr}</Text>}
       {isLive && <Text color="green" bold> LIVE</Text>}
       {follow && <Text color="yellow" bold> FOLLOW</Text>}
     </Box>

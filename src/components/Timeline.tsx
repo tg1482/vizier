@@ -31,6 +31,8 @@ function getNodeInfo(node: Node): { symbol: string; color: string } {
     case "agent_start": return { symbol: "\u27D0", color: "magenta" } // ⟐
     case "agent_end": return { symbol: "\u27D0", color: "gray" }
     case "progress": return { symbol: "\u25CB", color: "gray" }      // ○
+    case "reasoning": return { symbol: "\u25C7", color: "gray" }     // ◇
+    case "patch": return { symbol: "\u25A0", color: "blue" }         // ■
   }
 }
 
@@ -121,6 +123,8 @@ function getNodePeekLabel(node: Node): { text: string; color: string; usage: str
     case "agent_start": label = `Agent: ${t.agentType}`; color = "magenta"; break
     case "agent_end": label = "Agent End"; color = "gray"; break
     case "progress": label = "Progress"; color = "gray"; break
+    case "reasoning": label = "Reasoning"; color = "gray"; break
+    case "patch": label = `Patch: ${t.files.length} files`; color = "blue"; break
   }
   let usage = ""
   if (node.usage) {
@@ -151,6 +155,8 @@ function getNodePeekLines(node: Node, maxWidth: number, maxLines: number): strin
     case "tool_result": rawText = t.output; break
     case "agent_start": rawText = `Type: ${t.agentType}  ID: ${t.agentId}`; break
     case "agent_end": rawText = `ID: ${t.agentId}`; break
+    case "reasoning": rawText = t.text; break
+    case "patch": rawText = t.files.join("\n"); break
   }
 
   // For tool inputs, try to format JSON as key: value pairs

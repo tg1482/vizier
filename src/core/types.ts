@@ -24,6 +24,7 @@ export type Usage = {
   output_tokens?: number
   cache_read_input_tokens?: number
   cache_creation_input_tokens?: number
+  reasoning_tokens?: number
 }
 
 // Parsed node types — discriminated union
@@ -36,6 +37,8 @@ export type NodeType =
   | { kind: "agent_start"; agentId: string; agentType: string }
   | { kind: "agent_end"; agentId: string }
   | { kind: "progress"; text: string }
+  | { kind: "reasoning"; text: string }
+  | { kind: "patch"; files: string[]; hash: string }
 
 export type Node = {
   id: string
@@ -46,6 +49,9 @@ export type Node = {
   agentId?: string
   model?: string
   usage?: Usage
+  source?: string       // "opencode" | "claude"
+  cost?: number          // OpenCode tracks per-message cost
+  turnId?: string        // groups nodes belonging to same user turn
 }
 
 export type Edge = {
@@ -60,6 +66,8 @@ export type SessionStats = {
   totalCacheRead: number
   totalCacheCreation: number
   model: string | null
+  totalCost?: number
+  totalReasoningTokens?: number
 }
 
 export type Graph = {
@@ -73,4 +81,19 @@ export type SessionInfo = {
   timestamp: number
   nodeCount: number
   waitingForUser: boolean
+  title?: string
+  slug?: string
+  directory?: string
+  summary?: { additions: number; deletions: number; files: number }
+}
+
+// Source interface — abstracts over OpenCode and Claude data sources
+export interface Source {
+  kind: string
+  listSessions(): Promise<SessionInfo[]>
+  readGraph(sessionId: string): Promise<Graph>
+  watch(sessionId: string, onUpdate: (graph: Graph) => void): () => void
+  // Online-only capabilities (present when server is connected)
+  sendMessage?(sessionId: string, text: string): Promise<void>
+  abortSession?(sessionId: string): Promise<void>
 }
