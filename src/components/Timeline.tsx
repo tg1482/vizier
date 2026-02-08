@@ -33,20 +33,6 @@ function getToolSymbol(node: Node): string | null {
   return null
 }
 
-function getPreviewText(node: Node, maxLen: number): string {
-  const base = getNodePreview(node, maxLen)
-  if (node.nodeType.kind === "tool_call" || node.nodeType.kind === "tool_use") {
-    const symbol = getToolSymbol(node)
-    if (!symbol) return base
-    if (node.nodeType.kind === "tool_call") {
-      const status = node.nodeType.output === null ? "…" : (node.nodeType.isError ? "✗" : "✓")
-      return `${symbol} ${base} ${status}`.trim()
-    }
-    return `${symbol} ${base}`.trim()
-  }
-  return base
-}
-
 function getNodeInfo(node: Node): { symbol: string; color: InkColor } {
   switch (node.nodeType.kind) {
     case "user": return { symbol: "\u25CF", color: "cyan" }          // ●
@@ -386,7 +372,7 @@ export function Timeline({ graph, currentLevel, cursorInLevel, zoom, cellMode, b
 
     // Preview: "──● preview text    " — same ── prefix, then text fills remaining space
     const previewTail = isPreview
-      ? padToWidth(" " + getPreviewText(node, PREVIEW_TEXT_W - 1), PREVIEW_TEXT_W)
+      ? padToWidth(" " + getNodePreview(node, PREVIEW_TEXT_W - 1), PREVIEW_TEXT_W)
       : ""
 
     if (isCursor) {
@@ -423,7 +409,7 @@ export function Timeline({ graph, currentLevel, cursorInLevel, zoom, cellMode, b
     const displaySymbol = padSymbol(symbol)
 
     if (isPreview) {
-      const preview = getPreviewText(node, PREVIEW_TEXT_W - 1)
+      const preview = getNodePreview(node, PREVIEW_TEXT_W - 1)
       return (
         <Text key={key}>
           <Text color={color}>{displaySymbol}</Text>
