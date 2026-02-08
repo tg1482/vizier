@@ -31,6 +31,12 @@ export function SessionList({ sessions, currentSessionId, cursor }: Props) {
     return out + "…"
   }
 
+  const padToWidth = (text: string, width: number): string => {
+    const trimmed = fitToWidth(text, width)
+    const w = stringWidth(trimmed)
+    return w >= width ? trimmed : trimmed + " ".repeat(width - w)
+  }
+
   return (
     <Box flexDirection="column" borderStyle="single" borderColor="cyan" paddingX={1}>
       <Text bold> Sessions (Enter to switch, s to close) </Text>
@@ -74,12 +80,14 @@ export function SessionList({ sessions, currentSessionId, cursor }: Props) {
 
           const color = isCurrent ? "green" : undefined
 
-          const idCol = fitToWidth(shortId, idWidth)
-          const timeCol = fitToWidth(time, timeWidth)
-          const eventsCol = fitToWidth(`${String(session.nodeCount).padStart(4)} events`, eventsWidth)
+          const prefixCol = padToWidth(prefix, prefixWidth)
+          const sourceCol = padToWidth(sourceLabel, sourceWidth)
+          const idCol = padToWidth(shortId, idWidth)
+          const timeCol = padToWidth(time, timeWidth)
+          const eventsCol = padToWidth(`${String(session.nodeCount).padStart(4)} events`, eventsWidth)
           const titleStr = session.title ? ` ${session.title}` : ""
-          const titleCol = fitToWidth(`${titleStr}${currentMarker}`, titleWidth)
-          const idxLabel = DEBUG_LIST ? `${String(idx).padStart(4)} ` : ""
+          const titleCol = padToWidth(`${titleStr}${currentMarker}`, titleWidth)
+          const idxLabel = DEBUG_LIST ? padToWidth(`${String(idx).padStart(4)} `, idxWidth) : ""
 
           return (
             <Box
@@ -94,10 +102,10 @@ export function SessionList({ sessions, currentSessionId, cursor }: Props) {
                 </Box>
               )}
               <Box width={prefixWidth} flexShrink={0}>
-                <Text color={color} bold={isSelected} wrap="truncate">{prefix}</Text>
+                <Text color={color} bold={isSelected} wrap="truncate">{prefixCol}</Text>
               </Box>
               <Box width={sourceWidth} flexShrink={0}>
-                <Text color={color} bold={isSelected} wrap="truncate">{sourceLabel}</Text>
+                <Text color={color} bold={isSelected} wrap="truncate">{sourceCol}</Text>
               </Box>
               <Text color={color} bold={isSelected}> </Text>
               <Box width={idWidth} flexShrink={0}>
