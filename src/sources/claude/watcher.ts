@@ -85,19 +85,14 @@ export function listSessions(claudeDir: string, project: string): SessionInfo[] 
     const lines = content.trim().split("\n").filter(Boolean)
     const nodeCount = lines.length
 
-    let waitingForUser = false
-    if (lines.length > 0) {
-      try {
-        const last = JSON.parse(lines[lines.length - 1])
-        waitingForUser = last.type === "assistant"
-      } catch {}
-    }
+    const waitingForUser = false
 
     sessions.push({
       id,
       timestamp: stat.mtimeMs,
       nodeCount,
       waitingForUser,
+      source: "claude",
     })
   }
 

@@ -25,12 +25,13 @@ bun add -g vizier
 
 ## Sources
 
-Vizier supports both **Claude Code** and **OpenCode** session data. It auto-detects a source by default,
-or you can force one:
+Vizier supports both **Claude Code** and **OpenCode** session data. By default, it will load **both**
+when available and show them together in the session list. You can force a single source:
 
 ```bash
 vizier --source claude
 vizier --source opencode
+vizier --source multi
 ```
 
 ## Tool Icon Mapping

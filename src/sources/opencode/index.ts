@@ -10,18 +10,20 @@ import {
 } from "./reader"
 import { buildOpenCodeGraph } from "./graph"
 
-export function createOpenCodeSource(): Source {
+export function createOpenCodeSource(projectPath?: string): Source {
   return {
     kind: "opencode",
 
     async listSessions(): Promise<SessionInfo[]> {
       const sessions = listAllSessions()
+        .filter(s => !projectPath || s.directory === projectPath)
       return sessions
         .map(s => ({
           id: s.id,
           timestamp: s.time.updated,
-          nodeCount: 0, // Computed lazily — counting messages is cheap enough
+          nodeCount: readMessages(s.id).length,
           waitingForUser: false,
+          source: "opencode",
           title: s.title,
           slug: s.slug,
           directory: s.directory,
