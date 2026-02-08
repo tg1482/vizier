@@ -15,6 +15,7 @@ type Props = {
   initialGraph: Graph
   sessionId: string
   source: Source
+  initialSessionListOpen?: boolean
 }
 
 // Get the nth node at a given level (returns global index)
@@ -88,7 +89,7 @@ function getLatestNodePosition(graph: Graph, zoom: ZoomLevel): { level: number; 
   return { level, pos: Math.max(0, pos - 1) }
 }
 
-export function App({ initialGraph, sessionId: initialSessionId, source }: Props) {
+export function App({ initialGraph, sessionId: initialSessionId, source, initialSessionListOpen }: Props) {
   const { stdout } = useStdout()
   const { exit } = useApp()
   const termWidth = stdout?.columns ?? 120
@@ -115,7 +116,9 @@ export function App({ initialGraph, sessionId: initialSessionId, source }: Props
 
   const [timelineOpen, setTimelineOpen] = useState(true)
   const [detailsOpen, setDetailsOpen] = useState(false)
-  const [sessionListOpen, setSessionListOpen] = useState(false)
+  const [sessionListOpen, setSessionListOpen] = useState(
+    initialSessionListOpen ?? initialGraph.nodes.length === 0
+  )
   const [sessionListCursor, setSessionListCursor] = useState(0)
   const [sessions, setSessions] = useState<SessionInfo[]>([])
 

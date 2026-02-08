@@ -1,6 +1,6 @@
 # Vizier
 
-**Timeline visualizer for Claude Code sessions.**
+**Timeline visualizer for Claude Code and OpenCode sessions.**
 
 Watch your sessions unfold on a horizontal timeline — zoom between high-level conversation flow and full execution detail. Built with TypeScript, Bun, and React Ink.
 
@@ -15,9 +15,48 @@ Watch your sessions unfold on a horizontal timeline — zoom between high-level 
 - **Token stats** — input/output/cache token counts in the status bar
 - **Sticky context** — shows the most recent parent node before the viewport
 - **Agent discovery** — automatically finds and visualizes subagent branches (see `AGENTS.md`)
+- **Tool icons** — customizable tool→emoji mapping for faster scanning
 
 ## Install
 
 ```bash
 bun add -g vizier
+```
+
+## Sources
+
+Vizier supports both **Claude Code** and **OpenCode** session data. It auto-detects a source by default,
+or you can force one:
+
+```bash
+vizier --source claude
+vizier --source opencode
+```
+
+## Tool Icon Mapping
+
+Tool icons are configurable with a simple rules file. By default, Vizier ships with reasonable emojis, and
+you can override or extend them.
+
+Config path (default):
+```
+~/.config/vizier/tool-icons.json
+```
+
+Override path:
+```
+VIZIER_TOOL_ICONS=/path/to/tool-icons.json
+```
+
+Example:
+```json
+{
+  "rules": [
+    { "tool": "bash", "inputPattern": "\\bgit\\b", "icon": "🌿" },
+    { "tool": "bash", "inputPattern": "\\bgrep\\b", "icon": "🔎" },
+    { "tool": "bash", "icon": "🖥️" },
+    { "tool": "read", "icon": "📖" },
+    { "tool": "write", "icon": "📝" }
+  ]
+}
 ```

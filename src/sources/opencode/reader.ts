@@ -2,12 +2,28 @@ import { readFileSync, readdirSync, existsSync } from "fs"
 import { join, basename, extname } from "path"
 import { homedir } from "os"
 
-// Storage root
-export const STORAGE = join(homedir(), ".local/share/opencode/storage")
-const SESSIONS_DIR = join(STORAGE, "session")
-const MESSAGES_DIR = join(STORAGE, "message")
-const PARTS_DIR = join(STORAGE, "part")
-const PROJECTS_DIR = join(STORAGE, "project")
+// Storage root (resolve at call time so tests can override via env)
+export function getStorageRoot(): string {
+  return process.env.OPENCODE_STORAGE
+    ? process.env.OPENCODE_STORAGE
+    : join(homedir(), ".local/share/opencode/storage")
+}
+
+function getSessionsDir(): string {
+  return join(getStorageRoot(), "session")
+}
+
+function getMessagesDir(): string {
+  return join(getStorageRoot(), "message")
+}
+
+function getPartsDir(): string {
+  return join(getStorageRoot(), "part")
+}
+
+function getProjectsDir(): string {
+  return join(getStorageRoot(), "project")
+}
 
 // On-disk types matching OpenCode's JSON format
 export type OCProject = {
@@ -106,47 +122,48 @@ function readJsonDir<T>(dir: string): T[] {
 }
 
 export function storageExists(): boolean {
-  return existsSync(STORAGE)
+  return existsSync(getStorageRoot())
 }
 
 export function discoverProjects(): OCProject[] {
-  return readJsonDir<OCProject>(PROJECTS_DIR)
+  return readJsonDir<OCProject>(getProjectsDir())
 }
 
 export function listSessionsForProject(projectID: string): OCSession[] {
-  const dir = join(SESSIONS_DIR, projectID)
+  const dir = join(getSessionsDir(), projectID)
   return readJsonDir<OCSession>(dir)
 }
 
 export function listAllSessions(): OCSession[] {
-  if (!existsSync(SESSIONS_DIR)) return []
+  const sessionsDir = getSessionsDir()
+  if (!existsSync(sessionsDir)) return []
   const sessions: OCSession[] = []
-  for (const projectDir of readdirSync(SESSIONS_DIR)) {
-    const dir = join(SESSIONS_DIR, projectDir)
+  for (const projectDir of readdirSync(sessionsDir)) {
+    const dir = join(sessionsDir, projectDir)
     sessions.push(...readJsonDir<OCSession>(dir))
   }
   return sessions
 }
 
 export function readSession(projectID: string, sessionID: string): OCSession | null {
-  const path = join(SESSIONS_DIR, projectID, `${sessionID}.json`)
+  const path = join(getSessionsDir(), projectID, `${sessionID}.json`)
   return readJsonFile<OCSession>(path)
 }
 
 export function readMessages(sessionID: string): OCMessage[] {
-  const dir = join(MESSAGES_DIR, sessionID)
+  const dir = join(getMessagesDir(), sessionID)
   return readJsonDir<OCMessage>(dir)
 }
 
 export function readParts(messageID: string): OCPart[] {
-  const dir = join(PARTS_DIR, messageID)
+  const dir = join(getPartsDir(), messageID)
   return readJsonDir<OCPart>(dir)
 }
 
 export function getMessageDir(sessionID: string): string {
-  return join(MESSAGES_DIR, sessionID)
+  return join(getMessagesDir(), sessionID)
 }
 
 export function getPartDir(messageID: string): string {
-  return join(PARTS_DIR, messageID)
+  return join(getPartsDir(), messageID)
 }

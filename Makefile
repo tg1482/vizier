@@ -1,4 +1,4 @@
-.PHONY: dev build install clean
+.PHONY: dev build install clean test
 
 PROJECT := $(shell pwd)
 
@@ -13,3 +13,6 @@ install:
 
 clean:
 	rm -rf dist node_modules
+
+test:
+	bun test

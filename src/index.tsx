@@ -58,14 +58,13 @@ async function main() {
       process.exit(1)
     }
     sessionId = sessions[0].id
+  } else if (!sessions.some(s => s.id === sessionId)) {
+    console.error(`Session not found: ${sessionId}`)
+    console.error("Opening session list...")
   }
 
   const graph = await source.readGraph(sessionId)
-
-  if (graph.nodes.length === 0) {
-    console.error(`No events found for session: ${sessionId}`)
-    process.exit(1)
-  }
+  const openSessionListOnStart = graph.nodes.length === 0
 
   // Enter alternate screen buffer (like vim/less/htop)
   process.stdout.write("\x1b[?1049h\x1b[H")
@@ -74,6 +73,7 @@ async function main() {
     <App
       initialGraph={graph}
       sessionId={sessionId}
+      initialSessionListOpen={openSessionListOnStart}
       source={source}
     />,
     { exitOnCtrlC: true }

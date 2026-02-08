@@ -4,7 +4,7 @@ import stringWidth from "string-width"
 import type { Node, Graph } from "../core/types"
 import type { ZoomLevel, CellMode } from "../core/zoom"
 import { filterByZoom, getVisualBranch, getZoomLabel, getNodePreview, findStickyNode } from "../core/zoom"
-import { getNodeUi } from "../ui/adapters"
+import { getToolUi } from "../ui/tool-icons"
 
 type Props = {
   graph: Graph
@@ -25,43 +25,11 @@ const SIMPLE_ICON_SYMBOL: Record<string, string> = {
   "simple-icons:python": "🐍",
 }
 
-const TOOL_NAME_SYMBOL: Record<string, string> = {
-  read: "📖",
-  write: "📝",
-  edit: "🧵",
-  patch: "🧩",
-  file: "📄",
-  search: "🔍",
-  web: "🌐",
-  http: "🌐",
-  fetch: "📡",
-  bash: "🖥️",
-  shell: "🖥️",
-  git: "🌿",
-  github: "🐙",
-  python: "🐍",
-}
-
-function normalizeToolName(name: string): string {
-  return name.trim().toLowerCase()
-}
-
-function baseToolName(name: string): string {
-  const normalized = normalizeToolName(name)
-  const parts = normalized.split(/[/:]/).filter(Boolean)
-  return parts.length > 0 ? parts[parts.length - 1] : normalized
-}
-
 function getToolSymbol(node: Node): string | null {
   if (node.nodeType.kind !== "tool_call" && node.nodeType.kind !== "tool_use") return null
-  if (normalizeToolName(node.nodeType.name) === "bash") {
-    const input = node.nodeType.input.toLowerCase()
-    if (/\bgit\b/.test(input)) return "🌿"
-  }
-  const ui = getNodeUi(node)
+  const ui = getToolUi(node)
+  if (ui?.iconText) return ui.iconText
   if (ui?.iconId && SIMPLE_ICON_SYMBOL[ui.iconId]) return SIMPLE_ICON_SYMBOL[ui.iconId]
-  const name = baseToolName(node.nodeType.name)
-  if (TOOL_NAME_SYMBOL[name]) return TOOL_NAME_SYMBOL[name]
   return null
 }
 
