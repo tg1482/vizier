@@ -85,6 +85,7 @@ export type SessionInfo = {
   slug?: string
   directory?: string
   summary?: { additions: number; deletions: number; files: number }
+  source?: string
 }
 
 // Source interface — abstracts over OpenCode and Claude data sources

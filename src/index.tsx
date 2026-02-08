@@ -4,6 +4,7 @@ import { render } from "ink"
 import { App } from "./app"
 import { createOpenCodeSource, storageExists } from "./sources/opencode/index"
 import { createClaudeSource, getClaudeDir, getProjectSlug } from "./sources/claude/index"
+import { createMultiSource } from "./sources/multi/index"
 import type { Source } from "./core/types"
 
 function parseArgs(): { session?: string; project?: string; source?: string; server?: string } {
@@ -24,14 +25,15 @@ async function main() {
   // Determine source
   let sourceKind = args.source
   if (!sourceKind) {
-    // Auto-detect: prefer opencode if storage exists, fall back to claude
-    sourceKind = storageExists() ? "opencode" : "claude"
+    // Auto-detect: prefer combined when opencode exists, fall back to claude
+    sourceKind = storageExists() ? "multi" : "claude"
   }
 
   let source: Source
 
   if (sourceKind === "opencode") {
-    source = createOpenCodeSource()
+    const projectPath = args.project || process.cwd()
+    source = createOpenCodeSource(projectPath)
 
     // If server URL provided, wire up online capabilities
     if (args.server) {
@@ -40,11 +42,30 @@ async function main() {
       source.sendMessage = server.sendMessage.bind(server)
       source.abortSession = server.abortSession.bind(server)
     }
-  } else {
+  } else if (sourceKind === "claude") {
     const claudeDir = getClaudeDir()
     const projectPath = args.project || process.cwd()
     const project = getProjectSlug(projectPath)
     source = createClaudeSource(claudeDir, project)
+  } else {
+    const entries: { kind: string; source: Source }[] = []
+    if (storageExists()) {
+      const projectPath = args.project || process.cwd()
+      const oc = createOpenCodeSource(projectPath)
+      if (args.server) {
+        const { connectToServer } = await import("./sources/opencode/server")
+        const server = connectToServer(args.server)
+        oc.sendMessage = server.sendMessage.bind(server)
+        oc.abortSession = server.abortSession.bind(server)
+      }
+      entries.push({ kind: "opencode", source: oc })
+    }
+    const claudeDir = getClaudeDir()
+    const projectPath = args.project || process.cwd()
+    const project = getProjectSlug(projectPath)
+    const cl = createClaudeSource(claudeDir, project)
+    entries.push({ kind: "claude", source: cl })
+    source = createMultiSource(entries)
   }
 
   // Find session
@@ -54,18 +75,17 @@ async function main() {
   if (!sessionId) {
     if (sessions.length === 0) {
       console.error(`No sessions found for source: ${sourceKind}`)
-      console.error("\nUsage: vizier [--source opencode|claude] [--session <id>] [--project <path>] [--server <url>]")
+      console.error("\nUsage: vizier [--source opencode|claude|multi] [--session <id>] [--project <path>] [--server <url>]")
       process.exit(1)
     }
     sessionId = sessions[0].id
+  } else if (!sessions.some(s => s.id === sessionId)) {
+    console.error(`Session not found: ${sessionId}`)
+    console.error("Opening session list...")
   }
 
   const graph = await source.readGraph(sessionId)
-
-  if (graph.nodes.length === 0) {
-    console.error(`No events found for session: ${sessionId}`)
-    process.exit(1)
-  }
+  const openSessionListOnStart = graph.nodes.length === 0
 
   // Enter alternate screen buffer (like vim/less/htop)
   process.stdout.write("\x1b[?1049h\x1b[H")
@@ -74,6 +94,7 @@ async function main() {
     <App
       initialGraph={graph}
       sessionId={sessionId}
+      initialSessionListOpen={openSessionListOnStart}
       source={source}
     />,
     { exitOnCtrlC: true }

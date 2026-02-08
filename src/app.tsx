@@ -15,6 +15,7 @@ type Props = {
   initialGraph: Graph
   sessionId: string
   source: Source
+  initialSessionListOpen?: boolean
 }
 
 // Get the nth node at a given level (returns global index)
@@ -88,7 +89,7 @@ function getLatestNodePosition(graph: Graph, zoom: ZoomLevel): { level: number; 
   return { level, pos: Math.max(0, pos - 1) }
 }
 
-export function App({ initialGraph, sessionId: initialSessionId, source }: Props) {
+export function App({ initialGraph, sessionId: initialSessionId, source, initialSessionListOpen }: Props) {
   const { stdout } = useStdout()
   const { exit } = useApp()
   const termWidth = stdout?.columns ?? 120
@@ -115,8 +116,12 @@ export function App({ initialGraph, sessionId: initialSessionId, source }: Props
 
   const [timelineOpen, setTimelineOpen] = useState(true)
   const [detailsOpen, setDetailsOpen] = useState(false)
-  const [sessionListOpen, setSessionListOpen] = useState(false)
+  const [sessionListOpen, setSessionListOpen] = useState(
+    initialSessionListOpen ?? initialGraph.nodes.length === 0
+  )
   const [sessionListCursor, setSessionListCursor] = useState(0)
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null)
+  const [sessionListSessions, setSessionListSessions] = useState<SessionInfo[]>([])
   const [sessions, setSessions] = useState<SessionInfo[]>([])
 
   const [detailsScroll, setDetailsScroll] = useState(0)
@@ -128,6 +133,18 @@ export function App({ initialGraph, sessionId: initialSessionId, source }: Props
   useEffect(() => {
     source.listSessions().then(setSessions)
   }, [source])
+
+  const activeSessions = sessionListOpen ? sessionListSessions : sessions
+
+  // Keep cursor aligned to selected session when sessions list reorders
+  useEffect(() => {
+    if (!sessionListOpen) return
+    if (!selectedSessionId) return
+    const idx = sessionListSessions.findIndex(s => s.id === selectedSessionId)
+    if (idx >= 0 && idx !== sessionListCursor) {
+      setSessionListCursor(idx)
+    }
+  }, [sessionListOpen, sessionListSessions, selectedSessionId, sessionListCursor])
 
   // Only blink when the session is still running (last node is a pending tool call)
   const hasActiveNodes = useMemo(() => {
@@ -210,8 +227,14 @@ export function App({ initialGraph, sessionId: initialSessionId, source }: Props
     if (input === "s") {
       setSessionListOpen(prev => !prev)
       if (!sessionListOpen) {
-        const idx = sessions.findIndex(s => s.id === sessionId)
+        const list = sessions
+        setSessionListSessions(list)
+        const idx = list.findIndex(s => s.id === sessionId)
         setSessionListCursor(idx >= 0 ? idx : 0)
+        setSelectedSessionId(list[idx >= 0 ? idx : 0]?.id ?? sessionId)
+      } else {
+        setSessionListSessions([])
+        setSelectedSessionId(null)
       }
       return
     }
@@ -257,19 +280,25 @@ export function App({ initialGraph, sessionId: initialSessionId, source }: Props
     // Session list navigation
     if (sessionListOpen) {
       if (input === "j" || key.downArrow) {
-        setSessionListCursor(prev => Math.min(prev + 1, sessions.length - 1))
+        const next = Math.min(sessionListCursor + 1, activeSessions.length - 1)
+        setSessionListCursor(next)
+        setSelectedSessionId(activeSessions[next]?.id ?? null)
         return
       }
       if (input === "k" || key.upArrow) {
-        setSessionListCursor(prev => Math.max(prev - 1, 0))
+        const next = Math.max(sessionListCursor - 1, 0)
+        setSessionListCursor(next)
+        setSelectedSessionId(activeSessions[next]?.id ?? null)
         return
       }
       if (key.return) {
-        const selected = sessions[sessionListCursor]
+        const selected = activeSessions[sessionListCursor]
         if (selected && selected.id !== sessionId) {
           switchSession(selected.id)
         }
         setSessionListOpen(false)
+        setSessionListSessions([])
+        setSelectedSessionId(null)
         return
       }
       return
@@ -357,7 +386,7 @@ export function App({ initialGraph, sessionId: initialSessionId, source }: Props
     <Box flexDirection="column" width={termWidth} height={termHeight - 1}>
       {sessionListOpen && (
         <SessionList
-          sessions={sessions}
+          sessions={activeSessions}
           currentSessionId={sessionId}
           cursor={sessionListCursor}
         />

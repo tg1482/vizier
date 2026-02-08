@@ -1,0 +1,9 @@
+{
+  "rules": [
+    { "tool": "bash", "inputPattern": "\\bgit\\b", "icon": "🌿" },
+    { "tool": "bash", "inputPattern": "\\bgrep\\b", "icon": "🔎" },
+    { "tool": "bash", "icon": "🖥️" },
+    { "tool": "read", "icon": "📖" },
+    { "tool": "write", "icon": "📝" }
+  ]
+}

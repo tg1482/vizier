@@ -1,8 +1,10 @@
 import React from "react"
 import { Box, Text } from "ink"
+import stringWidth from "string-width"
 import type { Node, Graph } from "../core/types"
 import type { ZoomLevel, CellMode } from "../core/zoom"
 import { filterByZoom, getVisualBranch, getZoomLabel, getNodePreview, findStickyNode } from "../core/zoom"
+import { getToolUi } from "../ui/tool-icons"
 
 type Props = {
   graph: Graph
@@ -16,20 +18,48 @@ type Props = {
 
 type InkColor = "black" | "red" | "green" | "yellow" | "blue" | "magenta" | "cyan" | "white" | "gray"
 
+const SIMPLE_ICON_SYMBOL: Record<string, string> = {
+  "simple-icons:git": "🌿",
+  "simple-icons:github": "🐙",
+  "simple-icons:gnubash": "🖥️",
+  "simple-icons:python": "🐍",
+}
+
+function getToolSymbol(node: Node): string | null {
+  if (node.nodeType.kind !== "tool_call" && node.nodeType.kind !== "tool_use") return null
+  const ui = getToolUi(node)
+  if (ui?.iconText) return ui.iconText
+  if (ui?.iconId && SIMPLE_ICON_SYMBOL[ui.iconId]) return SIMPLE_ICON_SYMBOL[ui.iconId]
+  return null
+}
+
 function getNodeInfo(node: Node): { symbol: string; color: InkColor } {
   switch (node.nodeType.kind) {
     case "user": return { symbol: "\u25CF", color: "cyan" }          // ●
     case "assistant": return { symbol: "\u25C9", color: "green" }    // ◉
-    case "tool_use": return { symbol: "\u2B22", color: "yellow" }    // ⬢
+    case "tool_use": {
+      const symbol = getToolSymbol(node)
+      return { symbol: symbol ? `${symbol}·` : "\u2B22", color: "yellow" }  // ⬢
+    }
     case "tool_result":
       return node.nodeType.isError
         ? { symbol: "\u2717", color: "red" }                         // ✗
         : { symbol: "\u2713", color: "green" }                       // ✓
     case "tool_call":
-      if (node.nodeType.output === null) return { symbol: "\u2B22", color: "yellow" }  // ⬢ pending
-      return node.nodeType.isError
-        ? { symbol: "\u2717", color: "red" }                         // ✗ failed
-        : { symbol: "\u2713", color: "green" }                       // ✓ success
+      {
+        const symbol = getToolSymbol(node)
+        if (symbol) {
+          const status = node.nodeType.output === null ? "…" : (node.nodeType.isError ? "✗" : "✓")
+          const color: InkColor = node.nodeType.output === null
+            ? "yellow"
+            : node.nodeType.isError ? "red" : "green"
+          return { symbol: `${symbol} ${status}`, color }
+        }
+        if (node.nodeType.output === null) return { symbol: "\u2B22", color: "yellow" }  // ⬢ pending
+        return node.nodeType.isError
+          ? { symbol: "\u2717", color: "red" }                         // ✗ failed
+          : { symbol: "\u2713", color: "green" }                       // ✓ success
+      }
     case "agent_start": return { symbol: "\u27D0", color: "magenta" } // ⟐
     case "agent_end": return { symbol: "\u27D0", color: "gray" }
     case "progress": return { symbol: "\u25CB", color: "gray" }      // ○
@@ -67,14 +97,15 @@ function getRowLabel(row: number): string {
 }
 
 // Column widths per cell mode
-// Symbol: "──X" = 3 chars
-// Preview: "──X preview text    " = 22 chars (same ── prefix, symbol, then padded text)
-const COL_W_SYMBOL = 3
-const COL_W_PREVIEW = 22
-const PREVIEW_TEXT_W = COL_W_PREVIEW - 3  // 19 chars after "──X" for " preview text"
+// Symbol: "──WXYZ" = 6 chars (supports tool + spaced status, symbol padded to 4 cols)
+// Preview: "──WXYZ preview text    " = 25 chars (same ── prefix, symbol, then padded text)
+const COL_W_SYMBOL = 6
+const COL_W_PREVIEW = 25
+const PREVIEW_TEXT_W = COL_W_PREVIEW - 6  // 19 chars after "──WXYZ" for " preview text"
+const SYMBOL_W = 4
 
 // Sticky column widths per mode
-const STICKY_W_SYMBOL = 2           // "●│"
+const STICKY_W_SYMBOL = 5           // "●x  │"
 const STICKY_W_PREVIEW = COL_W_PREVIEW  // full width
 
 function getColW(mode: CellMode): number {
@@ -83,6 +114,29 @@ function getColW(mode: CellMode): number {
 
 function getStickyW(mode: CellMode): number {
   return mode === "preview" ? STICKY_W_PREVIEW : STICKY_W_SYMBOL
+}
+
+function padSymbol(symbol: string): string {
+  return padToWidth(symbol, SYMBOL_W)
+}
+
+function fitToWidth(text: string, width: number): string {
+  if (stringWidth(text) <= width) return text
+  let out = ""
+  let w = 0
+  for (const ch of text) {
+    const cw = stringWidth(ch)
+    if (w + cw > width) break
+    out += ch
+    w += cw
+  }
+  return out
+}
+
+function padToWidth(text: string, width: number): string {
+  const trimmed = fitToWidth(text, width)
+  const w = stringWidth(trimmed)
+  return w >= width ? trimmed : trimmed + " ".repeat(width - w)
 }
 
 // Detail line: only for node types where it adds info beyond the preview
@@ -295,10 +349,10 @@ export function Timeline({ graph, currentLevel, cursorInLevel, zoom, cellMode, b
     if (shouldShow) {
       const t = formatTime(node.timestamp)
       if (isPreview) {
-        timeSpans.push(<Text key={`t${col}`} dimColor>{t.padEnd(colW)}</Text>)
+        timeSpans.push(<Text key={`t${col}`} dimColor>{padToWidth(t, colW)}</Text>)
         lastShownTime = node.timestamp
       } else {
-        timeSpans.push(<Text key={`t${col}`} dimColor>{t.padEnd(colW * 2)}</Text>)
+        timeSpans.push(<Text key={`t${col}`} dimColor>{padToWidth(t, colW * 2)}</Text>)
         lastShownTime = node.timestamp
         skipNext = 1
       }
@@ -313,11 +367,12 @@ export function Timeline({ graph, currentLevel, cursorInLevel, zoom, cellMode, b
   ): React.ReactNode {
     const { symbol, color } = getNodeInfo(node)
     const active = isNodeActive(graph, idx)
-    const displaySymbol = active ? (blinkState ? "\u25D0" : "\u25D1") : symbol
+    const allowBlink = !(node.nodeType.kind === "tool_call" || node.nodeType.kind === "tool_use")
+    const displaySymbol = padSymbol(active && allowBlink ? (blinkState ? "\u25D0" : "\u25D1") : symbol)
 
     // Preview: "──● preview text    " — same ── prefix, then text fills remaining space
     const previewTail = isPreview
-      ? (" " + getNodePreview(node, PREVIEW_TEXT_W - 1)).padEnd(PREVIEW_TEXT_W)
+      ? padToWidth(" " + getNodePreview(node, PREVIEW_TEXT_W - 1), PREVIEW_TEXT_W)
       : ""
 
     if (isCursor) {
@@ -351,20 +406,21 @@ export function Timeline({ graph, currentLevel, cursorInLevel, zoom, cellMode, b
   function renderStickyCell(nodeIdx: number, key: string): React.ReactNode {
     const node = graph.nodes[nodeIdx]
     const { symbol, color } = getNodeInfo(node)
+    const displaySymbol = padSymbol(symbol)
 
     if (isPreview) {
       const preview = getNodePreview(node, PREVIEW_TEXT_W - 1)
       return (
         <Text key={key}>
-          <Text color={color}>{symbol}</Text>
-          <Text dimColor>{" " + preview.padEnd(stickyW - 3)}</Text>
+          <Text color={color}>{displaySymbol}</Text>
+          <Text dimColor>{padToWidth(" " + preview, stickyW - 5)}</Text>
           <Text dimColor>{"\u2502"}</Text>
         </Text>
       )
     }
     return (
       <Text key={key}>
-        <Text color={color}>{symbol}</Text>
+        <Text color={color}>{displaySymbol}</Text>
         <Text dimColor>{"\u2502"}</Text>
       </Text>
     )
@@ -414,7 +470,7 @@ export function Timeline({ graph, currentLevel, cursorInLevel, zoom, cellMode, b
     rows.push(
       <Text key={`row-${vb}`}>
         <Text color={isCurrentRow ? "yellow" : undefined} bold={isCurrentRow} dimColor={!isCurrentRow}>
-          {label.padEnd(labelW)}
+          {padToWidth(label, labelW)}
         </Text>
         {cellSpans}
       </Text>
@@ -452,7 +508,7 @@ export function Timeline({ graph, currentLevel, cursorInLevel, zoom, cellMode, b
 
           if (nodeBranch === vb) {
             const detail = getNodeDetailLine(node, PREVIEW_TEXT_W - 1)
-            detailSpans.push(<Text key={col} dimColor>{"   " + detail.padEnd(colW - 3)}</Text>)
+            detailSpans.push(<Text key={col} dimColor>{padToWidth("   " + detail, colW)}</Text>)
           } else if (vb < maxBranch && connectorGaps[vb].has(col)) {
             detailSpans.push(<Text key={col} dimColor>{"\u2502" + pad(colW - 1)}</Text>)
           } else {
@@ -503,7 +559,7 @@ export function Timeline({ graph, currentLevel, cursorInLevel, zoom, cellMode, b
       </Text>
       <Text>{" "}</Text>
       <Text>
-        {"Time".padEnd(labelW)}
+        {padToWidth("Time", labelW)}
         {timeStickyPad}
         {timeSpans}
       </Text>
